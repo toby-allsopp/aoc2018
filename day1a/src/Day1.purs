@@ -2,19 +2,16 @@ module Day1 where
 
 import Prelude
 
-import Data.Foldable (class Foldable, elem, sum)
+import Data.Foldable (class Foldable, sum)
 import Data.HashSet as HS
+import Data.Hashable (class Hashable)
 import Data.Int (fromString)
 import Data.Lazy (defer)
-import Data.List as L
 import Data.List.Lazy as LL
-import Data.List.NonEmpty as NEL
-import Data.Maybe (Maybe, fromJust)
-import Data.NonEmpty (NonEmpty(..))
+import Data.Maybe (Maybe)
 import Data.String.Common (trim)
 import Data.String.Utils (lines)
 import Data.Traversable (sequence)
-import Partial.Unsafe (unsafePartial)
 
 parseChange :: String -> Maybe Int
 parseChange = fromString
@@ -33,22 +30,23 @@ lazyScanl f init l = go init (LL.step l)
             let next = f curr x in
                 LL.List (defer (\_ -> LL.Cons next (go next (LL.step xs))))
 
--- [1,2,3] -> [[1], [2,1], [3,2,1]]
-subLists :: forall a. LL.List a -> LL.List {x :: a, seen :: HS.HashSet a}
-subLists = lazyScanl (step) HS.empty
+-- [1,2,3] -> [{1, []}, {2,[1]}, {3,[2,1]}]
+subLists :: forall a. Hashable a => LL.List a -> LL.List {x :: a, seen :: HS.HashSet a}
+subLists l = go HS.empty (LL.step l)
     where
-        step {x:prev, seen} x = {x, seen:HS.insert prev seen}
+        go seen LL.Nil = LL.nil
+        go seen (LL.Cons x xs) = LL.List (defer (\_ -> LL.Cons {x, seen} (go (HS.insert x seen) (LL.step xs))))
 
-repeats :: forall a. Eq a => LL.List a -> LL.List a
+repeats :: forall a. Hashable a => LL.List a -> LL.List a
 repeats =
     subLists
-    >>> LL.filter (\(NEL.NonEmptyList (NonEmpty x seen)) -> x `elem` seen)
-    >>> map NEL.head
+    >>> LL.filter (\{x, seen} -> x `HS.member` seen)
+    >>> map _.x
 
-firstRepeat :: forall a. Eq a => LL.List a -> Maybe a
+firstRepeat :: forall a. Hashable a => LL.List a -> Maybe a
 firstRepeat = repeats >>> LL.head
 
-firstRepeatedCyclicPartialSum :: forall f a. Foldable f => Semiring a => Eq a => f a -> Maybe a
+firstRepeatedCyclicPartialSum :: forall f a. Foldable f => Semiring a => Hashable a => f a -> Maybe a
 firstRepeatedCyclicPartialSum =
     LL.fromFoldable
     >>> LL.cycle

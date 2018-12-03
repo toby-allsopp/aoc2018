@@ -4,14 +4,21 @@
     "**/.*",
     "node_modules",
     "bower_components",
-    "output"
+    "output",
+    "test",
+    "tests"
   ],
   "dependencies": {
-    "purescript-prelude": "^4.1.0",
-    "purescript-console": "^4.2.0",
-    "purescript-effect": "^2.0.0"
+    "purescript-node-fs": "^5.0.0",
+    "purescript-unordered-collections": "^1.6.0",
+    "purescript-stringutils": "^0.0.8"
   },
   "devDependencies": {
-    "purescript-psci-support": "^4.0.0"
-  }
+    "purescript-psci-support": "^4.0.0",
+    "purescript-test-unit": "^14.0.0"
+  },
+  "homepage": "https://github.com/toby-allsopp/aoc2018",
+  "description": "",
+  "main": "",
+  "license": "MIT"
 }

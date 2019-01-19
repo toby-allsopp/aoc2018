@@ -6,7 +6,7 @@ import Data.Array as Array
 import Data.Either (Either(..))
 import Data.HashMap as HashMap
 import Data.Maybe (Maybe(..))
-import Day4 (groupLinesIntoShifts, parseInput, sleepiestGuard, sleepiestMinutePerGuard, sleepsPerMinutePerGuard, sortLines, strategy1, sumSleepTimesPerGuard)
+import Day4 (groupLinesIntoShifts, parseInput, sleepiestGuard, sleepiestMinutePerGuard, sleepsPerMinutePerGuard, sortLines, strategy1, strategy2, sumSleepTimesPerGuard)
 import Effect (Effect)
 import Test.Unit (test)
 import Test.Unit.Assert as Assert
@@ -33,10 +33,13 @@ input = """[1518-11-01 00:00] Guard #10 begins shift
 
 main :: Effect Unit
 main = runTest do
-  test "strategy 1" do
-    let lines = parseInput input
+  let lines = parseInput input
+  test "parseInput" do
     Assert.equal (Right 17) $ lines <#> Array.length
-    let shifts = (lines <#> sortLines) >>= groupLinesIntoShifts
+  let shifts = (lines <#> sortLines) >>= groupLinesIntoShifts
+  test "strategy 1" do
     Assert.equal (Right 10) $ (shifts <#> sumSleepTimesPerGuard) >>= sleepiestGuard
     Assert.equal (Right $ Just $ Just 24) $ shifts <#> sleepsPerMinutePerGuard <#> sleepiestMinutePerGuard <#> HashMap.lookup 10
     Assert.equal (Right {minute: 24, guardId: 10}) $ shifts >>= strategy1
+  test "strategy 2" do
+    Assert.equal (Right {guardId: 99, minute: 45}) $ shifts >>= strategy2

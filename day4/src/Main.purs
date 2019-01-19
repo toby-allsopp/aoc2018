@@ -918,3 +918,4 @@ main :: Effect Unit
 main = do
   let shifts = input # Day4.parseInput <#> Day4.sortLines >>= Day4.groupLinesIntoShifts
   log $ show $ shifts >>= Day4.strategy1 >>= (\s@{guardId, minute} -> pure $ Tuple s (guardId * minute))
+  log $ show $ shifts >>= Day4.strategy2 >>= (\s@{guardId, minute} -> pure $ Tuple s (guardId * minute))

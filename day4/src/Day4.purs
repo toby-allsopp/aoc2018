@@ -170,3 +170,24 @@ strategy1 shifts =
         guardId <- sleepiestGuard sstpg
         minute <- sleepiestMinutePerGuard spmpg # HashMap.lookup guardId # join # maybe (Left "no minutes") Right
         pure { guardId, minute }
+
+type GuardMinute = {guardId :: GuardId, minute :: Minute}
+
+guardMinute :: GuardId -> Minute -> GuardMinute
+guardMinute guardId minute = { guardId, minute }
+
+sleepsPerGuardMinute :: Array Shift -> Histogram GuardMinute
+sleepsPerGuardMinute = foldl f emptyHistogram
+    where
+        f :: Histogram GuardMinute -> Shift -> Histogram GuardMinute
+        f prev {id, sleeps} =
+            updateHistogramWithSleeps sleeps id prev
+        
+        updateHistogramWithSleeps :: Array { startMinute :: Minute, endMinute :: Minute } ->  GuardId -> Histogram GuardMinute -> Histogram GuardMinute
+        updateHistogramWithSleeps sleeps id sleepsPerMinute = foldl (flip (updateHistogramWithRange id)) sleepsPerMinute sleeps
+
+        updateHistogramWithRange :: GuardId -> { startMinute :: Minute, endMinute :: Minute } -> Histogram GuardMinute -> Histogram GuardMinute
+        updateHistogramWithRange id {startMinute, endMinute} = updateHistogramWithSamples (Array.range startMinute (endMinute-1) <#> guardMinute id)
+
+strategy2 :: Array Shift -> Either String GuardMinute
+strategy2 shifts = sleepsPerGuardMinute shifts # maximumKeyByValue # maybe (Left "no guards") Right

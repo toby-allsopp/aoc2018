@@ -19,3 +19,5 @@ main = runTest do
     Assert.equal (Day5.parseInput "abAB") $ "abAB" # Day5.parseInput # Day5.react
     Assert.equal (Day5.parseInput "aabAAB") $ "aabAAB" # Day5.parseInput # Day5.react
     Assert.equal (Day5.parseInput "dabCBAcaDA") $ input # Day5.parseInput # Day5.react
+  test "part 2" do
+    Assert.equal (Day5.parseInput "daDA") $ "dabAcCaCBAcCcaDA" # Day5.parseInput # Day5.reactRemovingOne   

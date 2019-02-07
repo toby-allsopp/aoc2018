@@ -13,3 +13,4 @@ input = "xXwIiSsjJWnQqNkSsmMKkKyYXxmRLlrlCcJjLbBxnNeTtPpTMmtECcOoLlWwAlLasSFfXoH
 main :: Effect Unit
 main = do
   log $ show $ input # Day5.parseInput # Day5.react # Array.length
+  log $ show $ input # Day5.parseInput # Day5.reactRemovingOne # Array.length

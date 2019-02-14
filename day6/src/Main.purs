@@ -61,4 +61,4 @@ input = """66, 204
 main :: Effect Unit
 main = do
   log $ show $ input # Day6.parseInput <#> (Day6.findClosestCoords >>> Day6.largestFiniteArea)
-  --log $ show $ input # Day6.parseInput # Day6.reactRemovingOne # Array.length
+  log $ show $ input # Day6.parseInput <#> (Day6.sumDistancesToEachCoord >>> Day6.areaWithDistanceLessThan 10000)

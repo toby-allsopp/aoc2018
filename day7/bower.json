@@ -1,0 +1,21 @@
+{
+  "name": "day7",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "output"
+  ],
+  "dependencies": {
+    "purescript-prelude": "^4.1.0",
+    "purescript-console": "^4.2.0",
+    "purescript-effect": "^2.0.0",
+    "purescript-yarn": "^4.0.0",
+    "purescript-unordered-collections": "^1.6.0",
+    "purescript-strings": "^4.0.1"
+  },
+  "devDependencies": {
+    "purescript-psci-support": "^4.0.0",
+    "purescript-test-unit": "^14.0.0"
+  }
+}

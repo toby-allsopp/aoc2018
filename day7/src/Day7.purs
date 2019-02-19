@@ -8,7 +8,8 @@ import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..))
 import Data.String.Yarn (lines)
 import Data.Traversable (sequence)
-import Graph
+import Graph (Graph, NodeId)
+import Graph as Graph
 import Parser (char, eof, literal, runParser)
 
 type Step = Char
@@ -28,20 +29,20 @@ parseInput :: String -> Either String (Array Instruction)
 parseInput input = lines input <#> parseLine # sequence
 
 graphOfInstructions :: forall id. Array Instruction -> Graph id Step Unit
-graphOfInstructions instructions = graphFromEdges $ instructions <#> \{beforeStep, afterStep} -> {fromNode: beforeStep, toNode: afterStep}
+graphOfInstructions instructions = Graph.graphFromEdges $ instructions <#> \{beforeStep, afterStep} -> {fromNode: beforeStep, toNode: afterStep}
 
 readySteps :: forall id. Graph id Step Int -> Array (NodeId id)
-readySteps = nodesMatchingColourBy (_ == 0)
+readySteps = Graph.nodesMatchingColourBy (_ == 0)
 
 markStepAsDone :: forall id. NodeId id -> Graph id Step Int -> Graph id Step Int
-markStepAsDone step graph = foldl (\g s -> modifyColourOfNode s (_ - 1) g) graph (Array.snoc (edgesFrom graph step) step)
+markStepAsDone step graph = foldl (\g s -> Graph.modifyColourOfNode s (_ - 1) g) graph (Array.snoc (Graph.edgesFrom graph step) step)
 
 stepsInOrder :: Array Instruction -> Array Step
-stepsInOrder instructions = go (colourWithNumberOfIncomingEdges (graphOfInstructions instructions)) []
+stepsInOrder instructions = go (Graph.colourWithNumberOfIncomingEdges (graphOfInstructions instructions)) []
     where
         go :: forall id. Graph id Step Int -> Array Step -> Array Step
         go graph steps =
-            let nextSteps = readySteps graph # Array.sortWith (nodeAt graph) in
+            let nextSteps = readySteps graph # Array.sortWith (Graph.nodeAt graph) in
             case Array.head nextSteps of
                 Nothing -> steps
-                Just nextStep -> go (markStepAsDone nextStep graph) (Array.snoc steps (nodeAt graph nextStep))
+                Just nextStep -> go (markStepAsDone nextStep graph) (Array.snoc steps (Graph.nodeAt graph nextStep))

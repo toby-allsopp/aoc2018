@@ -8,6 +8,7 @@ import Test.Unit (test)
 import Test.Unit.Assert as Assert
 import Test.Unit.Main (runTest)
 import Data.Either (Either(..))
+import Data.Enum (fromEnum)
 
 input :: String
 input = """Step C must be finished before step A can begin.
@@ -22,6 +23,6 @@ main :: Effect Unit
 main = runTest do
   let coords = input # Day7.parseInput
   test "part 1" do
-    Assert.equal (Right ['C', 'A', 'B', 'D', 'F', 'E']) $ coords <#> Day7.stepsInOrder
-  --test "part 2" do
-    --Assert.equal (Right 16) $ coords <#> (Day6.sumDistancesToEachCoord >>> Day6.areaWithDistanceLessThan 32)
+    Assert.equal (Right { t : 6, steps : ['C', 'A', 'B', 'D', 'F', 'E'] }) $ coords <#> Day7.stepsInOrderWithWorkers 1 (const 1)
+  test "part 2" do
+    Assert.equal (Right { t : 15, steps : ['C', 'A', 'B', 'F', 'D', 'E'] }) $ coords <#> Day7.stepsInOrderWithWorkers 2 (fromEnum >>> (_ - fromEnum 'A') >>> (_ + 1))

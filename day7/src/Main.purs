@@ -2,7 +2,7 @@ module Main where
 
 import Prelude
 
-import Data.String.CodeUnits as Data.String.CodePoint
+import Data.String.CodeUnits (fromCharArray)
 import Day7 as Day7
 import Effect (Effect)
 import Effect.Console (log)
@@ -110,7 +110,10 @@ Step H must be finished before step E can begin.
 Step X must be finished before step I can begin.
 Step O must be finished before step R can begin."""
 
+renderResult :: { t :: Int, steps :: Array Day7.Step } -> {t :: Int, steps :: String }
+renderResult { t, steps } = { t, steps : fromCharArray steps }
+
 main :: Effect Unit
 main = do
-  log $ show $ input # Day7.parseInput <#> Day7.stepsInOrder <#> Data.String.CodePoint.fromCharArray
-  --log $ show $ input # Day7.parseInput <#> (Day6.sumDistancesToEachCoord >>> Day6.areaWithDistanceLessThan 10000)
+  log $ show $ input # Day7.parseInput <#> Day7.stepsInOrderWithWorkers 1 (const 1) <#> renderResult
+  log $ show $ input # Day7.parseInput <#> Day7.stepsInOrderWithWorkers 5 Day7.part2NodeDuration <#> renderResult

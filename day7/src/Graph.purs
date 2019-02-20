@@ -7,7 +7,8 @@ module Graph (
     edgesFrom,
     colourWithNumberOfIncomingEdges,
     nodesMatchingColourBy,
-    modifyColourOfNode
+    modifyColourOfNode,
+    mapColour
 ) where
 
 import Prelude
@@ -29,6 +30,9 @@ data Graph (id :: GraphId) node colour = Graph {
 }
 
 data NodeId (id :: GraphId) = NodeId Int
+
+instance nodeIdEq :: Eq (NodeId id) where
+    eq (NodeId i1) (NodeId i2) = eq i1 i2
 
 graphFromEdges :: forall id node. Ord node => Array { fromNode :: node, toNode :: node } -> Graph id node Unit
 graphFromEdges nodeEdges = Graph { nodes, edges, colours }
@@ -64,3 +68,6 @@ modifyColourOfNode (NodeId nodeIndex) f (Graph { nodes, edges, colours }) =
         edges,
         colours : unsafePartial $ fromJust $ Array.modifyAt nodeIndex f colours
     }
+
+mapColour :: forall id node colour1 colour2. (colour1 -> colour2) -> Graph id node colour1 -> Graph id node colour2
+mapColour f (Graph { nodes, edges, colours }) = Graph {nodes, edges, colours : f <$> colours}

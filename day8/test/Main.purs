@@ -2,8 +2,8 @@ module Test.Main where
 
 import Prelude
 
+import Data.Either (Either(..))
 import Day8 as Day8
-import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Test.Unit (test)
 import Test.Unit.Assert as Assert
@@ -16,6 +16,7 @@ main :: Effect Unit
 main = runTest do
   let tree = input # Day8.parseInput
   test "part 1" do
-    Assert.equal (Just 138) $ tree <#> Day8.sumMetadata
+    Assert.equal (Right "Tree { children: [Tree { children: [], metadata: [10,11,12] },Tree { children: [Tree { children: [], metadata: [99] }], metadata: [2] }], metadata: [1,1,2] }") $ show <$> tree
+    Assert.equal (Right 138) $ tree <#> Day8.sumMetadata
   -- test "part 2" do
   --   Assert.equal (Right { t : 15, steps : ['C', 'A', 'B', 'F', 'D', 'E'] }) $ coords <#> Day7.stepsInOrderWithWorkers 2 (fromEnum >>> (_ - fromEnum 'A') >>> (_ + 1))

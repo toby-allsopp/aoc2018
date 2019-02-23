@@ -4,38 +4,48 @@ module Day8 (
     sumMetadata
 ) where
 
+import Parser
 import Prelude
 
 import Data.Array as Array
-import Data.Maybe (Maybe(..))
+import Data.Either (Either, note)
 import Data.Foldable (sum)
 import Data.Int as Int
 import Data.String.Yarn (words)
 import Data.Traversable (sequence)
+import View as View
 
 data Tree = Tree {
     children :: Array Tree,
     metadata :: Array Int
 }
 
-parseInput :: String -> Maybe Tree
-parseInput input = input # words <#> Int.fromString # sequence >>= makeTree >>= (\{tree, rest} -> if Array.null rest then Just tree else Nothing)
+instance treeShow :: Show Tree where
+    show (Tree r) = "Tree " <> show r
 
-makeTree :: Array Int -> Maybe { tree :: Tree, rest :: Array Int }
-makeTree a =
-    case Array.take 2 a of
-        [numChildren, numMetadata] -> do
-            { trees : children, rest } <- makeTrees numChildren (Array.drop 2 a)
-            let metadata = Array.take numMetadata rest
-            pure { tree : Tree { children, metadata }, rest: Array.drop numMetadata rest }
-        _ -> Nothing
+parseInt :: String -> Either String Int
+parseInt s = Int.fromString s # note ("not an integer: " <> s)
 
-makeTrees :: Int -> Array Int -> Maybe { trees :: Array Tree, rest :: Array Int }
-makeTrees 0 a = Just { trees : [], rest : a }
-makeTrees n a = do
-    {tree, rest} <- makeTree a
-    {trees, rest: rest' } <- makeTrees (n-1) rest
-    pure { trees : Array.cons tree trees, rest : rest' }
+parseInput :: String -> Either String Tree
+parseInput input = input # words <#> parseInt # sequence >>= doParseTree
+
+doParseTree :: Array Int -> Either String Tree
+doParseTree = View.allIndexed >>> runParser (parseTree <* eof)
+
+parseTree :: Parser (View.IndexableView (Array Int) Int) Int Tree
+parseTree = do
+  numChildren <- char
+  numMetadata <- char
+  children <- parseTrees numChildren
+  metadata <- take numMetadata
+  pure $ Tree { children, metadata : View.toUnfoldable metadata }
+
+parseTrees :: Int -> Parser (View.IndexableView (Array Int) Int) Int (Array Tree)
+parseTrees 0 = pure []
+parseTrees n = do
+  tree <- parseTree
+  trees <- parseTrees (n - 1)
+  pure $ Array.cons tree trees
 
 sumMetadata :: Tree -> Int
 sumMetadata (Tree { children, metadata }) = sum metadata + sum (sumMetadata <$> children)

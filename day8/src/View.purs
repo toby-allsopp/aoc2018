@@ -12,7 +12,11 @@ class View v a | v -> a where
     head :: v -> Maybe { head :: a, tail :: v }
     splitAt :: Int -> v -> Maybe { before :: v, after :: v }
     length :: v -> Int
-    empty :: v
+
+showView :: forall v a. View v a => Show a => v -> String
+showView v = case head v of
+    Just { head, tail } -> "(View " <> show head <> " " <> showView tail <> ")"
+    Nothing -> "(View)"
 
 null :: forall v a. View v a => v -> Boolean
 null v = length v == 0
@@ -22,6 +26,16 @@ toUnfoldable = unfoldr go
     where
         go :: v -> Maybe (Tuple a v)
         go v = head v <#> (\h -> Tuple h.head h.tail)
+
+data EmptyView a = EmptyView
+
+instance emptViewView :: View (EmptyView a) a where
+    head _ = Nothing
+    splitAt _ _ = Nothing
+    length _ = 0
+
+empty :: forall a. EmptyView a
+empty = EmptyView
 
 class Indexable f a | f -> a where
     index :: f -> Int -> Maybe a
@@ -61,10 +75,24 @@ instance indexableViewView :: Indexable f a => View (IndexableView f a) a where
 
     length (IndexableView { indexable, begin, end }) = end - begin
 
-    empty = IndexableView { indexable : emptyIndexable, begin : 0, end : 0 }
-
 allIndexed :: forall f a. Indexable f a => f -> IndexableView f a
 allIndexed xs = IndexableView { indexable : xs, begin : 0, end : lengthIndexable xs }
+
+data AnyView c = AnyView (forall a. (forall v. View v c => v -> a) -> a)
+
+eraseView :: forall v c. View v c => v -> AnyView c
+eraseView v = AnyView (\f -> f v)
+
+uneraseView :: forall a c. (forall v. View v c => v -> a) -> AnyView c -> a
+uneraseView f (AnyView run) = run f
+
+instance anyViewShow :: Show a => Show (AnyView a) where
+    show = uneraseView showView
+
+instance anyViewView :: View (AnyView c) c where
+    head = uneraseView (\v -> head v <#> \cons -> { head : cons.head, tail : eraseView cons.tail })
+    splitAt n = uneraseView (\v -> splitAt n v <#> \{ before, after} -> { before : eraseView before, after : eraseView after })
+    length = uneraseView length
 
 testView :: forall v a. View v a => v -> Array a
 testView v = case head v of

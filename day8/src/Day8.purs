@@ -32,7 +32,7 @@ parseInput input = input # words <#> parseInt # sequence >>= doParseTree
 doParseTree :: Array Int -> Either String Tree
 doParseTree = View.allIndexed >>> runParser (parseTree <* eof)
 
-parseTree :: Parser (View.IndexableView (Array Int) Int) Int Tree
+parseTree :: Parser Int Tree
 parseTree = do
   numChildren <- char
   numMetadata <- char
@@ -40,7 +40,7 @@ parseTree = do
   metadata <- take numMetadata
   pure $ Tree { children, metadata : View.toUnfoldable metadata }
 
-parseTrees :: Int -> Parser (View.IndexableView (Array Int) Int) Int (Array Tree)
+parseTrees :: Int -> Parser Int (Array Tree)
 parseTrees 0 = pure []
 parseTrees n = do
   tree <- parseTree

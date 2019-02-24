@@ -1,13 +1,15 @@
 module Day8 (
     Tree,
     parseInput,
-    sumMetadata
+    sumMetadata,
+    nodeValue
 ) where
 
 import Parser
 import Prelude
 
 import Data.Array as Array
+import Data.Maybe (maybe)
 import Data.Either (Either, note)
 import Data.Foldable (sum)
 import Data.Int as Int
@@ -34,18 +36,23 @@ doParseTree = View.allIndexed >>> runParser (parseTree <* eof)
 
 parseTree :: Parser Int Tree
 parseTree = do
-  numChildren <- char
-  numMetadata <- char
-  children <- parseTrees numChildren
-  metadata <- take numMetadata
-  pure $ Tree { children, metadata : View.toUnfoldable metadata }
+    numChildren <- char
+    numMetadata <- char
+    children <- parseTrees numChildren
+    metadata <- take numMetadata
+    pure $ Tree { children, metadata: View.toUnfoldable metadata }
 
 parseTrees :: Int -> Parser Int (Array Tree)
 parseTrees 0 = pure []
 parseTrees n = do
-  tree <- parseTree
-  trees <- parseTrees (n - 1)
-  pure $ Array.cons tree trees
+    tree <- parseTree
+    trees <- parseTrees (n - 1)
+    pure $ Array.cons tree trees
 
 sumMetadata :: Tree -> Int
 sumMetadata (Tree { children, metadata }) = sum metadata + sum (sumMetadata <$> children)
+
+nodeValue :: Tree -> Int
+nodeValue (Tree { children: [], metadata }) = sum metadata
+nodeValue (Tree { children, metadata }) =
+    sum $ metadata <#> ((_-1) >>> Array.index children >>> maybe 0 nodeValue)

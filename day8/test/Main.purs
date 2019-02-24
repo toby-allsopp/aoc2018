@@ -18,5 +18,5 @@ main = runTest do
   test "part 1" do
     Assert.equal (Right "Tree { children: [Tree { children: [], metadata: [10,11,12] },Tree { children: [Tree { children: [], metadata: [99] }], metadata: [2] }], metadata: [1,1,2] }") $ show <$> tree
     Assert.equal (Right 138) $ tree <#> Day8.sumMetadata
-  -- test "part 2" do
-  --   Assert.equal (Right { t : 15, steps : ['C', 'A', 'B', 'F', 'D', 'E'] }) $ coords <#> Day7.stepsInOrderWithWorkers 2 (fromEnum >>> (_ - fromEnum 'A') >>> (_ + 1))
+  test "part 2" do
+    Assert.equal (Right 66) $ tree <#> Day8.nodeValue

@@ -12,4 +12,4 @@ input = """8 11 7 3 5 4 3 5 1 7 0 6 1 6 5 3 5 2 2 1 3 1 2 1 1 1 8 0 8 7 7 3 8 9 
 main :: Effect Unit
 main = do
   log $ show $ input # Day8.parseInput <#> Day8.sumMetadata
-  -- log $ show $ input # Day7.parseInput <#> Day7.stepsInOrderWithWorkers 5 Day7.part2NodeDuration <#> renderResult
+  log $ show $ input # Day8.parseInput <#> Day8.nodeValue

@@ -1,16 +1,21 @@
 module Day9 (
     State,
-    game,
+    --game,
     winningScore
 ) where
 
 import Prelude
 
+import Control.Monad.ST (ST)
+import Control.Monad.ST as ST
+import Control.Monad.ST.Internal (STRef)
+import Control.Monad.ST.Internal as STRef
 import Data.Array as Array
-import Data.Maybe (Maybe, fromJust, fromMaybe)
 import Data.Foldable (class Foldable, foldl, foldr, foldMap, maximum)
-import Data.Traversable (scanl)
-import Partial.Unsafe (unsafePartial)
+import Data.Long (Long)
+import Data.Long as Long
+import Data.Maybe (Maybe(..), fromJust, fromMaybe)
+import Partial.Unsafe (unsafeCrashWith, unsafePartial)
 
 newtype CircularArray a = CircularArray (Array a)
 
@@ -46,52 +51,124 @@ instance circularArrayFoldable :: Foldable CircularArray where
     foldr f x (CircularArray a) = foldr f x a
     foldMap f (CircularArray a) = foldMap f a
 
-data State = State {
-    marbles :: CircularArray Int,
-    currentIndex :: Int,
-    scores :: CircularArray Int
+type CLData r a = { data :: a, prev :: STRef r (CircularList r a), next :: STRef r (CircularList r a) }
+data CircularList r a = CircularList (CLData r a) | Empty
+
+clUnsafeFromNonEmpty :: forall r a. CircularList r a -> CLData r a
+clUnsafeFromNonEmpty (CircularList l) = l
+clUnsafeFromNonEmpty Empty = unsafeCrashWith "unexpected empty CircularList"
+
+clUnsafePrev :: forall r a. CircularList r a -> ST r (CLData r a)
+clUnsafePrev = clUnsafeFromNonEmpty >>> (_.prev) >>> STRef.read >=> (pure <<< clUnsafeFromNonEmpty)
+
+clUnsafeNext :: forall r a. CircularList r a -> ST r (CLData r a)
+clUnsafeNext = clUnsafeFromNonEmpty >>> (_.next) >>> STRef.read >=> (pure <<< clUnsafeFromNonEmpty)
+
+clSingleton :: forall r a. a -> ST r (CircularList r a)
+clSingleton x = do
+    p <- STRef.new Empty
+    n <- STRef.new Empty
+    let mcl = CircularList { data: x, prev: p, next: n }
+    _ <- STRef.write mcl p
+    STRef.write mcl n
+
+clAdvance :: forall r a. Int -> CircularList r a -> ST r (CircularList r a)
+clAdvance 0 l = pure l
+clAdvance n (CircularList l) | n > 0 = do
+    next <- STRef.read l.next
+    clAdvance (n - 1) next
+clAdvance n (CircularList l) | otherwise = do
+    prev <- STRef.read l.prev
+    clAdvance (n + 1) prev
+clAdvance _ Empty = pure Empty
+
+clHead :: forall r a. CircularList r a -> Maybe a
+clHead (CircularList l) = Just l.data
+clHead Empty = Nothing
+
+clInsertHead :: forall r a. a -> CircularList r a -> ST r (CircularList r a)
+clInsertHead x n@(CircularList ndata) = do
+    -- insert l between p and n
+    -- p = n.prev
+    -- l.prev = p
+    -- l.next = n
+    -- p.next = l
+    -- n.prev = l
+    p <- STRef.read ndata.prev
+    let pdata = clUnsafeFromNonEmpty p
+    next <- STRef.new n
+    prev <- STRef.new p
+    let l = CircularList { data: x, prev, next }
+    _ <- STRef.write l pdata.next
+    _ <- STRef.write l ndata.prev
+    pure l
+clInsertHead x Empty = clSingleton x
+
+clDeleteHead :: forall r a. CircularList r a -> ST r (CircularList r a)
+clDeleteHead (CircularList ldata) = do
+    p <- STRef.read ldata.prev
+    let pdata = clUnsafeFromNonEmpty p
+    n <- STRef.read ldata.next
+    let ndata = clUnsafeFromNonEmpty n
+    _ <- STRef.write p ndata.prev
+    STRef.write n pdata.next
+clDeleteHead Empty = pure Empty
+
+data State r = State {
+    marbles :: CircularList r Int,
+    scores :: CircularArray Long
 }
 
-derive instance eqState :: Eq State
+-- derive instance eqState :: Eq State
 
-instance showState :: Show State where
-    show (State s) = show s
+-- instance showState :: Show (State r) where
+--     show (State s) = show s
 
-initialState :: Int -> State
-initialState players = State {
-    marbles: caSingleton 0,
-    currentIndex: 0,
-    scores: caReplicate players 0
-}
+initialState :: forall r. Int -> ST r (State r)
+initialState players = do
+    marbles <- clSingleton 0
+    pure $ State {
+        marbles,
+        scores: caReplicate players (Long.fromInt 0)
+    }
 
-placeMarble :: Int -> Int -> State -> State
-placeMarble turn marbleScore (State { marbles: marbles@(CircularArray oldMarbles), currentIndex, scores }) =
-    if marbleScore `mod` 23 == 0 then
-        State {
-            marbles: caDeleteAt (currentIndex - 7) marbles,
-            currentIndex: caNormalizeIndex oldMarbles (currentIndex - 7),
-            scores: caModifyAt turn (_ + (caIndex marbles (currentIndex - 7)) + marbleScore) scores
+placeMarble :: forall r. Int -> Int -> State r -> ST r (State r)
+placeMarble turn marbleScore (State { marbles, scores }) =
+    if marbleScore `mod` 23 == 0 then do
+        marbles' <- clAdvance (-7) marbles
+        marbles'' <- clDeleteHead marbles'
+        pure $ State {
+            marbles: marbles'',
+            scores: caModifyAt turn (_ + (Long.fromInt (clHead marbles' # fromMaybe 0)) + (Long.fromInt marbleScore)) scores
         }
-    else
-        let newMarbles@(CircularArray a) = caInsertAt (currentIndex + 2) marbleScore marbles in
-        State {
-            marbles: newMarbles,
-            currentIndex: caNormalizeIndex oldMarbles (currentIndex + 2),
+    else do
+        marbles' <- clAdvance 2 marbles
+        marbles'' <- clInsertHead marbleScore marbles'
+        pure $ State {
+            marbles: marbles'',
             scores
         }
 
-takeTurn :: State -> Int -> State
+takeTurn :: forall r. State r -> Int -> ST r (State r)
 takeTurn state turn = placeMarble turn (turn + 1) state
 
-game :: Int -> Int -> Array State
-game players lastMarbleScore =
-    scanl takeTurn (initialState players) (Array.range 0 (lastMarbleScore - 1))
+game :: forall r. Int -> Int -> ST r (Array (State r))
+game players lastMarbleScore = do
+    init <- initialState players
+    Array.foldM go [init] (Array.range 0 (lastMarbleScore - 1))
+    where
+        go :: Array (State r) -> Int -> ST r (Array (State r))
+        go states turn = do
+            let state = unsafePartial $ Array.last states # fromJust
+            newState <- takeTurn state turn
+            pure $ Array.snoc states newState
 
-play :: Int -> Int -> State
-play players turns = --game players turns # Array.last # fromMaybe (initialState players)
-    foldl takeTurn (initialState players) (Array.range 0 (turns - 1))
+play :: forall r. Int -> Int -> ST r (State r)
+play players turns = do
+    init <- initialState players
+    Array.foldRecM takeTurn init (Array.range 0 (turns - 1))
 
-winningScore :: Int -> Int -> Maybe Int
-winningScore players lastMarbleScore =
-    let State finalState = play players lastMarbleScore in
-    finalState.scores # maximum
+winningScore :: Int -> Int -> Maybe Long
+winningScore players lastMarbleScore = ST.run do
+    State finalState <- play players lastMarbleScore
+    pure $ finalState.scores # maximum

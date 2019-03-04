@@ -19,5 +19,3 @@ main = runTest do
     Assert.equal (Just 2764) $ Day9.winningScore 17 1104
     Assert.equal (Just 54718) $ Day9.winningScore 21 6111
     Assert.equal (Just 37305) $ Day9.winningScore 30 5807
-  -- test "part 2" do
-  --   Assert.equal (Right 66) $ tree <#> Day8.nodeValue

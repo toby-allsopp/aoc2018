@@ -12,7 +12,9 @@
     "purescript-effect": "^2.0.0",
     "purescript-yarn": "^4.0.0",
     "purescript-unordered-collections": "^1.6.0",
-    "purescript-strings": "^4.0.1"
+    "purescript-strings": "^4.0.1",
+    "purescript-longs": "^0.1.1",
+    "long": "^4.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^4.0.0",

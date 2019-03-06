@@ -4,12 +4,14 @@ import Prelude
 
 import Data.Array as Array
 import Data.Either (Either)
+import Data.Long as Long
+import Data.Long (Long)
 import Data.Maybe (fromMaybe)
 import Data.String (joinWith)
 import Data.String.CodeUnits (fromCharArray)
 import Data.String.Yarn (lines)
 import Data.Traversable (foldl, sequence)
-import Partial.Unsafe (unsafePartial)
+import Partial.Unsafe (unsafeCrashWith, unsafePartial)
 import Parser as P
 
 type Position = { x :: Int, y :: Int }
@@ -55,8 +57,11 @@ bounds = foldl go { minPos: { x: top, y: top }, maxPos: { x: bottom, y: bottom }
         maxPos: { x: max maxPos.x position.x, y: max maxPos.y position.y }
     }
 
-boundsSize :: { minPos :: Position, maxPos :: Position } -> Int
-boundsSize { minPos, maxPos } = (maxPos.x - minPos.x) * (maxPos.y - minPos.y)
+boundsSize :: { minPos :: Position, maxPos :: Position } -> Long
+boundsSize { minPos, maxPos } =
+    let result = (Long.fromInt (maxPos.x - minPos.x)) * (Long.fromInt (maxPos.y - minPos.y)) in
+    if result <= Long.fromInt 0 then unsafeCrashWith ("OMG: " <> show { minPos, maxPos })
+    else result
 
 runUntilMinBounds :: Array Point -> Array Point
 runUntilMinBounds initialPoints = go top initialPoints

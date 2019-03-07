@@ -381,5 +381,4 @@ main =
   case Day10.parseInput input of
     Left error -> log error
     Right points -> do
-      log $ Day10.renderPoints $ Day10.runUntilMinBounds $ points
-      --log $ show $ Day9.winningScore 491 7105800
+      log $ (\{ points, steps } -> Day10.renderPoints points <> "\n" <> show steps) $ Day10.runUntilMinBounds $ points

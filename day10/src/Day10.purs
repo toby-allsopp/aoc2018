@@ -63,16 +63,16 @@ boundsSize { minPos, maxPos } =
     if result <= Long.fromInt 0 then unsafeCrashWith ("OMG: " <> show { minPos, maxPos })
     else result
 
-runUntilMinBounds :: Array Point -> Array Point
-runUntilMinBounds initialPoints = go top initialPoints
+runUntilMinBounds :: Array Point -> { points :: Array Point, steps :: Int }
+runUntilMinBounds initialPoints = go top { points: initialPoints, steps: 0 }
     where
-    go lastBoundsSize lastPoints =
+    go lastBoundsSize { points: lastPoints, steps } =
         let nextPoints = step lastPoints in
         let nextBoundsSize = boundsSize (bounds nextPoints) in
         if nextBoundsSize > lastBoundsSize then
-            lastPoints
+            { points: lastPoints, steps }
         else
-            go nextBoundsSize nextPoints
+            go nextBoundsSize { points: nextPoints, steps: steps + 1 }
 
 data Array2D a = Array2D {
     a :: Array a,

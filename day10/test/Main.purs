@@ -50,9 +50,10 @@ expected = """#...#..###
 #...#...#.
 #...#...#.
 #...#...#.
-#...#..###"""
+#...#..###
+3"""
 
 main :: Effect Unit
 main = runTest do
   test "part 1" do
-    Assert.equal (Right expected) $ Day10.renderPoints <$> Day10.runUntilMinBounds <$> Day10.parseInput input
+    Assert.equal (Right expected) $ (\{ points, steps } -> Day10.renderPoints points <> "\n" <> show steps) <$> Day10.runUntilMinBounds <$> Day10.parseInput input

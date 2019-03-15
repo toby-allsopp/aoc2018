@@ -2,8 +2,6 @@ module Day12 where
 
 import Prelude
 
-import Parser as P
-
 import Control.Monad.ST (ST)
 import Control.Monad.ST as ST
 import Data.Array ((!!), (..))
@@ -11,11 +9,14 @@ import Data.Array as Array
 import Data.Array.ST (STArray)
 import Data.Array.ST as STArray
 import Data.Either (Either)
-import Data.Foldable (foldMap, sum)
+import Data.Foldable (all, foldMap, sum)
+import Data.Int.Bits (shl)
+import Data.List.Lazy as LL
 import Data.Maybe (Maybe(..), fromJust, fromMaybe)
-import Data.Traversable (maximumBy)
-import Data.Tuple (fst, snd)
-import Partial.Unsafe (unsafePartial, unsafeCrashWith)
+import Data.Tuple (Tuple(..), fst, snd)
+import Data.Unfoldable (unfoldr)
+import Parser as P
+import Partial.Unsafe (unsafePartial)
 
 data Plant = No | Yes
 
@@ -65,15 +66,33 @@ initialStateParser = do
     plants <- P.zeroOrMore plantParser
     pure $ State { startIndex: 0, plants: Plants plants }
 
-newtype Rule = Rule { input :: Plants, output :: Plant }
+newtype Rule = Rule { input :: Array Plant, output :: Plant }
+
+instance showRule :: Show Rule where
+    show (Rule r) = show r.input <> " => " <> show r.output
 
 ruleOutput :: Rule -> Plant
 ruleOutput (Rule { output }) = output
 
-type Rules = Array Rule
+plantValue :: Plant -> Int
+plantValue No = 0
+plantValue Yes = 1
 
-instance showRule :: Show Rule where
-    show (Rule r) = show r.input <> " => " <> show r.output
+sliceValue :: Array Plant -> Int -> Int
+sliceValue plants startIndex =
+    bit 4 + bit 3 + bit 2 + bit 1 + bit 0
+    where
+    bit n = plants !! (startIndex + 4 - n) # fromMaybe No # plantValue # (_ `shl` n)
+--foldl (\v p -> (v `shl` 1) + (plantValue p)) 0 plants
+
+type Rules = Array Plant
+
+makeRules :: Array Rule -> Rules
+makeRules ruleArray = ST.run (STArray.withArray go (Array.replicate 32 No))
+    where
+    go :: forall r. STArray r Plant -> ST r Unit
+    go rules = ST.foreach ruleArray \(Rule { input, output }) ->
+        void $ STArray.poke (sliceValue input 0) output rules
 
 ruleParser :: Parser Rule
 ruleParser = do
@@ -81,7 +100,7 @@ ruleParser = do
     unless (Array.length input == 5) $ P.fail $ "Input not 5 long: " <> show input
     _ <- P.literal " => "
     output <- plantParser
-    pure $ Rule { input: Plants input, output }
+    pure $ Rule { input, output }
 
 type Input = { initialState :: State, rules :: Rules }
 
@@ -91,22 +110,19 @@ inputParser = do
     P.eol
     P.eol
     rules <- P.zeroOrMore (ruleParser <* P.eol)
-    pure { initialState, rules }
+    pure { initialState, rules: makeRules rules }
 
 parseInput :: String -> Either String Input
 parseInput = P.runParser inputParser
 
-doesRuleMatch :: Array Plant -> Rule -> Boolean
-doesRuleMatch plants (Rule { input: Plants input }) = plants == input
+rulesOutput :: Rules -> Array Plant -> Int -> Plant
+rulesOutput rules plants startIndex =
+    let plantsValue = sliceValue plants startIndex in
+    fromMaybe No $ rules !! plantsValue
 
 matchingRuleOutput :: Rules -> State -> Int -> Plant
 matchingRuleOutput rules (State { startIndex, plants: Plants plants }) centreIndex =
-    let surroundings = (Array.index plants >>> fromMaybe No) <$> (centreIndex - startIndex - 2) .. (centreIndex - startIndex + 2) in
-    let matchingRules = Array.filter (doesRuleMatch surroundings) rules in
-    case matchingRules of
-        [rule] -> ruleOutput rule
-        [] -> No
-        _ -> unsafeCrashWith $ "not exactly one matching rule at " <> show centreIndex <> " for " <> show surroundings
+    rulesOutput rules plants (centreIndex - startIndex - 2)
 
 generation :: Rules -> State -> State
 generation rules state@(State { startIndex, plants: Plants plants }) =
@@ -115,26 +131,30 @@ generation rules state@(State { startIndex, plants: Plants plants }) =
     let nextPlants = matchingRuleOutput rules state <$> nextStartIndex .. nextEndIndex in
     trimState $ State { plants: Plants nextPlants, startIndex: nextStartIndex }
 
-generations :: Rules -> Int -> State -> Array State
-generations rules n initialState = go [initialState]
-    where
-    go :: Array State -> Array State
-    go states =
-        let l = Array.length states in
-        if l > n then states
-        else
-            go $ Array.snoc states (generation rules (unsafePartial $ Array.unsafeIndex states (l - 1)))
+generations :: Rules -> State -> LL.List State
+generations rules initialState = LL.iterate (generation rules) initialState
 
 nthGeneration :: Rules -> Int -> State -> State
-nthGeneration rules n initialState = go 0 initialState
-    where
-    go :: Int -> State -> State
-    go i state =
-        if i >= n then state
-        else
-            go (i + 1) (generation rules state)
+nthGeneration rules n initialState = unsafePartial $ fromJust $ LL.index (generations rules initialState) n
 
 sumPlantNumbers :: State -> Int
 sumPlantNumbers (State { startIndex, plants: Plants plants }) =
     let plantsAndNumbers = Array.zip plants (startIndex .. (startIndex + Array.length plants)) in
     sum $ snd <$> Array.filter ((_ == Yes) <<< fst) plantsAndNumbers
+
+slidingWindow :: forall a. Int -> LL.List a -> LL.List (LL.List a)
+slidingWindow n = unfoldr (\xs -> Tuple (LL.take n xs) <$> (LL.tail xs))
+
+iterateGenerationsUntilStableDiff :: Rules -> State -> { generation :: Int, sum :: Int, diff :: Int }
+iterateGenerationsUntilStableDiff rules initialState =
+    let iterations = generations rules initialState <#> sumPlantNumbers # LL.zipWith makeIteration (LL.iterate (_+1) 0) in
+    let pairs = LL.zipWith makePair (unsafePartial $ fromJust $ LL.tail iterations) iterations in
+    let diffs = pairs <#> diff in
+    let windows = slidingWindow 5 diffs in
+    unsafePartial $ fromJust $ fromJust $ LL.head <$> (LL.head $ LL.dropWhile (not isStable) windows)
+
+    where
+        makeIteration generation sum = { generation, sum }
+        makePair current prev = { current, prev }
+        diff { current, prev } = { sum: current.sum, diff: (current.sum - prev.sum), generation: current.generation }
+        isStable diffs = LL.uncons diffs <#> (\{head,tail} -> all (\d -> d.diff == head.diff) tail) # fromMaybe true

@@ -1,17 +1,20 @@
 module Test.Main where
 
-import Day13
-import Prelude
-
 import Control.Monad.ST as ST
+import Data.Array as Array
 import Data.Array.ST as STArray
 import Data.Either (Either(..))
 import Data.Foldable (elem)
+import Data.Maybe (Maybe(..))
+import Day13 (Cart(..), Direction(..), Turn(..), compareCarts, findCollision, firstCrash, lastRemainingCart, lowerBoundBy, modifyAtSortedBy, moveCart, parseInput, rotate, swap, tick)
 import Effect (Effect)
 import Partial.Unsafe (unsafePartial)
+import Prelude (Ordering(..), Unit, bind, compare, discard, flip, mod, negate, pure, show, ($), (&&), (<>), (==), (>>=))
+import Test.QuickCheck (Result(..), (<?>))
 import Test.Unit (test)
 import Test.Unit.Assert as Assert
 import Test.Unit.Main (runTest)
+import Test.Unit.QuickCheck (quickCheck)
 
 main :: Effect Unit
 main = runTest do
@@ -58,15 +61,23 @@ v
   test "modifyAtSortedBy" do
     let go i x a = unsafePartial $ ST.run do
           a' <- STArray.thaw a
-          e <- modifyAtSortedBy compare i x a'
+          i' <- modifyAtSortedBy compare i x a'
           a'' <- STArray.freeze a'
-          pure { e, a: a'' }
-    Assert.equal { e: 1, a: [0] } $ go 0 0 [1]
-    Assert.equal { e: 1, a: [1] } $ go 0 1 [1]
-    Assert.equal { e: 1, a: [2] } $ go 0 2 [1]
-    Assert.equal { e: 2, a: [2, 2] } $ go 0 2 [1, 2]
-    Assert.equal { e: 2, a: [2, 3] } $ go 0 3 [1, 2]
-    Assert.equal { e: 1, a: [0, 1] } $ go 1 0 [1, 2]
+          pure { i: i', a: a'' }
+    Assert.equal { i: 0, a: [0] } $ go 0 0 [1]
+    Assert.equal { i: 0, a: [1] } $ go 0 1 [1]
+    Assert.equal { i: 0, a: [2] } $ go 0 2 [1]
+    Assert.equal { i: 0, a: [2, 2] } $ go 0 2 [1, 2]
+    Assert.equal { i: 1, a: [2, 3] } $ go 0 3 [1, 2]
+    Assert.equal { i: 0, a: [0, 1] } $ go 1 0 [1, 2]
+    Assert.equal { i: 0, a: [2, 3] } $ go 0 2 [1, 3]
+    quickCheck $ \i x a ->
+      if Array.null a then Success else
+      let index = (i `mod` Array.length a) in
+      let array = Array.sort a in
+      let { i: i', a: a' } = go index x array in
+      Array.sort a' == a' && Array.index a' i' == Just x
+        <?> "failed for input " <> show index <> " " <> show x <> " " <> show array <> " -> " <> show i' <> " " <> show a'
   test "compareCarts" do
     Assert.equal' "eq x, eq y" EQ $ compareCarts (Cart { x: 5, y: 7, direction: DirLeft, nextIntersectionChoice: TurnLeft })
                                                  (Cart { x: 5, y: 7, direction: DirRight, nextIntersectionChoice: TurnRight })
@@ -81,6 +92,12 @@ v
   test "moveCart" do
     Assert.equal (Cart { x: 1, y: 0, direction: DirRight, nextIntersectionChoice: TurnLeft }) $ moveCart [['-', '-', '-']] (Cart { x: 0, y: 0, direction: DirRight, nextIntersectionChoice: TurnLeft })
     Assert.equal (Cart { x: 1, y: 0, direction: DirUp, nextIntersectionChoice: Straight }) $ moveCart [['-', '+', '-']] (Cart { x: 0, y: 0, direction: DirRight, nextIntersectionChoice: TurnLeft })
+  test "findCollision" do
+    Assert.equal Nothing $ findCollision { carts: [] }
+    Assert.equal Nothing $ findCollision { carts: [Cart { x: 0, y: 2, direction: DirDown, nextIntersectionChoice: TurnLeft },
+                                                   Cart { x: 0, y: 4, direction: DirUp, nextIntersectionChoice: TurnLeft }] }
+    Assert.equal (Just {x: 0, y: 3}) $ findCollision { carts: [Cart { x: 0, y: 3, direction: Crashed, nextIntersectionChoice: TurnLeft },
+                                                               Cart { x: 0, y: 3, direction: Crashed, nextIntersectionChoice: TurnLeft }] }
   test "tick" do
     let input = parseInput """|
 v
@@ -90,8 +107,8 @@ v
 ^
 |"""
     Assert.equal (Right { carts: [Cart { x: 0, y: 2, direction: DirDown, nextIntersectionChoice: TurnLeft },
-                                  Cart { x: 0, y: 4, direction: DirUp, nextIntersectionChoice: TurnLeft }] }) $ tick input.map input.state
-    Assert.equal (Left { x: 0, y: 3 }) $ tick input.map input.state >>= tick input.map
+                                  Cart { x: 0, y: 4, direction: DirUp, nextIntersectionChoice: TurnLeft }] }) $ tick input.map findCollision input.state
+    Assert.equal (Left { x: 0, y: 3 }) $ tick input.map findCollision input.state >>= tick input.map findCollision
   test "part 1" do
     let input = parseInput """/->-\        
 |   |  /----\
@@ -100,3 +117,12 @@ v
 \-+-/  \-+--/
   \------/   """
     Assert.equal { x: 7, y: 3 } $ firstCrash input.map input.state
+  test "part 2" do
+    let input = parseInput """/>-<\  
+|   |  
+| /<+-\
+| | | v
+\>+</ |
+  |   ^
+  \<->/"""
+    Assert.equal { x: 6, y: 4 } $ (\(Cart { x, y }) -> { x, y }) $ lastRemainingCart input.map input.state

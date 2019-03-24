@@ -164,3 +164,4 @@ main :: Effect Unit
 main = do
   let input = Day13.parseInput inputString
   log $ show $ Day13.firstCrash input.map input.state
+  log $ show $ Day13.lastRemainingCart input.map input.state

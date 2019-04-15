@@ -3,8 +3,7 @@ module Position where
 import Prelude
 
 import Data.Hashable (class Hashable, hash)
-import Data.Ord (abs)
-import Partial.Unsafe (unsafeCrashWith)
+import Partial.Unsafe (unsafePartial, unsafeCrashWith)
 
 newtype Position = Position { x :: Int, y :: Int }
 
@@ -30,6 +29,3 @@ positionX (Position p) = p.x
 
 positionY :: Position -> Int
 positionY (Position p) = p.y
-
-manhattanDistance :: Position -> Position -> Int
-manhattanDistance (Position p1) (Position p2) = (abs (p1.x - p2.x)) + (abs (p1.y - p2.y))

@@ -1,22 +1,36 @@
 module Day15 where
 
+import Array2d
+import Control.Monad.Writer.Trans
+import Position
 import Prelude
 
-import Array2d (Array2d, array2dCols, array2dRows, index2d, parseArray2d)
 import Control.Alt (class Alt, (<|>))
+import Control.Apply (lift2)
 import Control.Monad.Error.Class (class MonadThrow, throwError)
-import Control.Monad.Writer.Trans (WriterT, lift, runWriterT, tell)
-import Data.Array (foldl, foldr, (!!))
+import Control.Monad.Rec.Class (Step(..), tailRecM)
+import Control.Monad.ST (ST)
+import Control.Monad.ST as ST
+import Control.Monad.ST.Ref (STRef)
+import Control.Monad.ST.Ref as STRef
+import Data.Array (foldMap, foldl, foldr, (!!))
 import Data.Array as Array
+import Data.Array.ST (STArray)
+import Data.Array.ST as STArray
 import Data.Either (Either(..))
-import Data.Foldable (foldM, minimumBy)
+import Data.Foldable (class Foldable, foldM, maximum, minimumBy, sum)
 import Data.Function (on)
+import Data.Function.Memoize (class Tabulate, tabulate, memoize)
 import Data.Maybe (Maybe(..), fromJust, fromMaybe)
-import Data.TraversableWithIndex (traverseWithIndex)
+import Data.String (joinWith)
+import Data.String.CodeUnits (toCharArray)
+import Data.String.CodeUnits as String
+import Data.String.Yarn (lines, unlines)
+import Data.Traversable (class Traversable, sequence, traverse, sequenceDefault, traverse_)
+import Data.TraversableWithIndex (class TraversableWithIndex, traverseWithIndex)
 import Data.Tuple (Tuple(..), fst, snd)
 import Parser as P
-import Partial.Unsafe (unsafePartial)
-import Position (Position(..), makePosition, manhattanDistance)
+import Partial.Unsafe (unsafePartial, unsafeCrashWith)
 import ShortestPaths as SP
 import Debug (debug)
 
@@ -183,15 +197,19 @@ openAdjacentPositions map units =
     adjacentPositions
     >>> Array.filter (\p -> unitOrSquareAt map units p <#> isOpen # fromMaybe false)
 
-shortestPathsTo :: Map -> Units -> Position -> Position -> Maybe SP.Label
-shortestPathsTo map units from to =
-    debug ("shortestPathsTo " <> show from <> " " <> show to) $ \_ ->
-    SP.shortestPathsTo (array2dCols map) (array2dRows map)
-        (openAdjacentPositions map units >>> Array.sortBy (comparing (manhattanDistance to)))
-        from to
+labelShortestPathsTo :: Map -> Units -> Position -> Array2d (Maybe SP.Label)
+labelShortestPathsTo map units to =
+    debug ("labelShortestPathsTo " <> show to) $ \_ ->
+    SP.labelShortestPathsTo (array2dCols map) (array2dRows map) (openAdjacentPositions map units) to
 
-nextStep :: Array Position -> Maybe Position
-nextStep = minimumBy readingOrder
+nextSteps :: Array (Array Position) -> Array Position
+nextSteps = Array.mapMaybe (\path -> path !! (Array.length path - 2))
+
+nextStep :: Array (Array Position) -> Maybe Position
+nextStep = nextSteps >>> minimumBy readingOrder
+
+spPathFrom :: SP.Path -> Maybe Position
+spPathFrom = _.paths >>> Array.head >=> Array.head
 
 chainCompare :: forall a. (a -> a -> Ordering) -> (a -> a -> Ordering) -> a -> a -> Ordering
 chainCompare cmp1 cmp2 x y =
@@ -199,9 +217,9 @@ chainCompare cmp1 cmp2 x y =
         EQ -> cmp2 x y
         o -> o
 
-compareDistanceThenReadingOrder :: Tuple Position SP.Path -> Tuple Position SP.Path -> Ordering
+compareDistanceThenReadingOrder :: SP.Path -> SP.Path -> Ordering
 compareDistanceThenReadingOrder =
-    chainCompare (compare `on` (snd >>> _.distance)) (readingOrder `on` fst)
+    chainCompare (compare `on` _.distance) (\x y -> fromMaybe EQ $ (lift2 readingOrder `on` spPathFrom) x y)
 
 updateUnitInUnits :: UnitState -> UnitState -> Units -> Units
 updateUnitInUnits oldUnit newUnit (Units units) =
@@ -209,20 +227,17 @@ updateUnitInUnits oldUnit newUnit (Units units) =
         Nothing -> Units units
         Just index -> Units $ fromMaybe units $ Array.sortBy (readingOrder `on` unitPosition) <$> Array.updateAt index newUnit units
 
-sequenceSnd :: forall m a b. Monad m => Tuple a (m b) -> m (Tuple a b)
-sequenceSnd (Tuple x my) = my >>= \y -> pure (Tuple x y)
-
 move :: Map -> UnitState -> Units -> Maybe UnitState
 move map unit units =
     debug ("move " <> show unit) $ \_ ->
+    let sps = labelShortestPathsTo map units (unitPosition unit) in
     let targets = targetsOfUnit units unit in
     if Array.null targets then
         Nothing
     else
         let inRange = inRangeOfTarget unit map units targets in
-        let sps = shortestPathsTo map (removeUnitAt (unitPosition unit) units) (unitPosition unit) <$> inRange in
-        let pathsToNearestInRange = minimumBy compareDistanceThenReadingOrder $ Array.mapMaybe sequenceSnd $ Array.zip inRange (liftA1 SP.labelToPath <$> sps) in
-        let movedUnit = pathsToNearestInRange <#> (snd >>> _.nexts) >>= nextStep <#> updateUnitPosition unit # fromMaybe unit in
+        let pathsToNearestInRange = minimumBy compareDistanceThenReadingOrder $ Array.catMaybes $ (flip SP.shortestPathsFrom sps <$> inRange) in
+        let movedUnit = pathsToNearestInRange <#> _.paths >>= nextStep <#> updateUnitPosition unit # fromMaybe unit in
         Just movedUnit
 
 adjacentTargets :: Map -> UnitState -> Units -> Array UnitState

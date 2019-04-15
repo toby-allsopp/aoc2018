@@ -25,62 +25,68 @@ type Label = { distance :: Int, next :: HashSet Position }
 type Labels h = Array2d (STRef h (Maybe Label))
 
 updatedLabel :: Position -> Int -> Maybe Label -> Label
-updatedLabel from distance = case _ of
+updatedLabel to distance = case _ of
     Just l | l.distance < distance  -> l
-    Just l | l.distance == distance -> l { next = HashSet.insert from l.next }
-    Just l | otherwise              -> { distance, next: HashSet.singleton from }
-    Nothing                         -> { distance, next: HashSet.singleton from }
+    Just l | l.distance == distance -> l { next = HashSet.insert to l.next }
+    Just l | otherwise              -> { distance, next: HashSet.singleton to }
+    Nothing                         -> { distance, next: HashSet.singleton to }
 
 updateLabel :: forall h. Partial => Position -> Int -> Labels h -> Position -> ST h Boolean
-updateLabel from distance labels pos = do
+updateLabel to distance labels pos = do
     let labelVar = index2d pos labels # fromJust
     oldLabel <- STRef.read labelVar
-    let newLabel = Just $ updatedLabel from distance oldLabel
+    let newLabel = Just $ updatedLabel to distance oldLabel
     void $ STRef.write newLabel labelVar
     pure $ newLabel /= oldLabel
 
-labelFrom :: forall h. Partial => Position -> Int -> Array Position -> Labels h -> ST h (Array Position)
-labelFrom from distance adjacents labels = do
-    label <- index2d from labels # fromJust # STRef.read
-    changed <- traverse (\pos -> updateLabel from (distance + 1) labels pos <#> if _ then Just pos else Nothing) adjacents
-    pure $ Array.catMaybes changed
+labelTo :: forall h. Partial => Position -> Int -> Array Position -> Labels h -> Position -> ST h (Array Position)
+labelTo to distance adjacents labels from = do
+    upperBoundM <- index2d from labels # fromJust # STRef.read
+    case upperBoundM of
+        Just upperBound | upperBound.distance < distance -> pure []
+        _ -> do
+            label <- index2d to labels # fromJust # STRef.read
+            changed <- traverse (\pos -> updateLabel to (distance + 1) labels pos <#> if _ then Just pos else Nothing) adjacents
+            pure $ Array.catMaybes changed
 
-wibble :: forall r. Partial => (Position -> Array Position) -> Labels r -> Position -> ST r (Array Position)
-wibble adj labels from = do
-    let adjacents = adj from
-    let labelVar = unsafeIndex2d from labels
+wibble :: forall r. Partial => (Position -> Array Position) -> Labels r -> Position -> Position -> ST r (Array Position)
+wibble adj labels from to = do
+    let adjacents = adj to
+    let labelVar = unsafeIndex2d to labels
     label <- STRef.read labelVar
-    labelFrom from (fromJust label # _.distance) adjacents labels
+    labelTo to (fromJust label # _.distance) adjacents labels from
 
 type Todo r = STArray r Position
 
-wobble :: forall r. Partial => (Position -> Array Position) -> Labels r -> Todo r -> ST r Unit
-wobble adj labels todo = tailRecM go unit
+wobble :: forall r. Partial => (Position -> Array Position) -> Labels r -> Todo r -> Position -> ST r Unit
+wobble adj labels todo from = tailRecM go unit
     where
     go :: Unit -> ST r (Step Unit Unit)
     go _ = do
         first <- STArray.peek 0 todo
         case first of
             Nothing -> pure $ Done unit
-            Just from -> do
-                adjacents <- wibble adj labels from
-                _ <- STArray.splice 0 1 [] todo
-                _ <- STArray.pushAll adjacents todo
+            Just to -> do
+                adjacents <- wibble adj labels from to
+                _ <- STArray.splice 0 1 adjacents todo
+                -- _ <- STArray.pushAll adjacents todo
                 pure $ Loop unit
 
-fribble :: forall r. Int -> Int -> (Position -> Array Position) -> Position -> ST r (Array2d (Maybe Label))
-fribble numCols numRows adj from = do
+fribble :: forall r. Int -> Int -> (Position -> Array Position) -> Position -> Position -> ST r (Maybe Label)
+fribble numCols numRows adj from to = do
     labels <- newArray2dST numCols numRows Nothing
-    case index2d from labels of
-        Just fromLabelVar -> do
-            _ <- STRef.write (Just { distance: 0, next: HashSet.empty }) fromLabelVar
-            todo <- STArray.thaw [from]
-            unsafePartial $ wobble adj labels todo
+    case index2d to labels of
+        Just toLabelVar -> do
+            _ <- STRef.write (Just { distance: 0, next: HashSet.empty }) toLabelVar
+            todo <- STArray.thaw [to]
+            unsafePartial $ wobble adj labels todo from
         Nothing -> pure unit
-    freezeArray2d labels
+    case index2d from labels of
+        Just fromLabelVar -> STRef.read fromLabelVar
+        Nothing -> pure Nothing
 
-labelShortestPathsTo :: Int -> Int -> (Position -> Array Position) -> Position -> Array2d (Maybe Label)
-labelShortestPathsTo numCols numRows adj from = ST.run (fribble numCols numRows adj from)
+shortestPathsTo :: Int -> Int -> (Position -> Array Position) -> Position -> Position -> Maybe Label
+shortestPathsTo numCols numRows adj from to = ST.run (fribble numCols numRows adj from to)
 
 followPaths :: Partial => Array2d (Maybe Label) -> Position -> Array (Array Position)
 followPaths sps = followPaths' []
@@ -96,11 +102,14 @@ followPaths sps = followPaths' []
                 let paths = followPaths' (Array.snoc seen p) =<< HashSet.toArray label.next in
                 Array.cons p <$> paths
 
-type Path = { distance :: Int, paths :: Array (Array Position) }
+type Path = { distance :: Int, nexts :: Array Position }
+
+labelToPath :: Label -> Path
+labelToPath label = { distance: label.distance, nexts: HashSet.toArray label.next }
 
 shortestPathsFrom :: Position -> Array2d (Maybe Label) -> Maybe Path
 shortestPathsFrom p sps = do
     maybeLabel <- index2d p sps
     label <- maybeLabel
-    let paths = unsafePartial $ followPaths sps p
-    pure { distance: label.distance, paths }
+    -- let paths = unsafePartial $ followPaths sps p
+    pure { distance: label.distance, nexts: HashSet.toArray label.next }

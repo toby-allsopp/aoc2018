@@ -2,24 +2,24 @@ module Array2d where
 
 import Prelude
 
-import Position
+import Position (Position, makePosition, positionX, positionY)
 
 import Control.Monad.Error.Class (class MonadThrow, throwError)
 import Control.Monad.ST (ST)
-import Control.Monad.ST as ST
+
 import Control.Monad.ST.Ref (STRef)
 import Control.Monad.ST.Ref as STRef
 import Data.Array as Array
 import Data.Array ((!!))
-import Data.Foldable (class Foldable, foldMap, foldl, foldr, maximum, minimumBy, sum)
+import Data.Foldable (class Foldable, foldMap, foldl, foldr, maximum)
 import Data.FoldableWithIndex (class FoldableWithIndex, foldlWithIndex, foldrWithIndex, foldMapWithIndex)
 import Data.FunctorWithIndex (class FunctorWithIndex, mapWithIndex)
-import Data.Maybe (Maybe(..), fromJust, fromMaybe)
+import Data.Maybe (Maybe, fromMaybe)
 import Data.String (joinWith)
 import Data.String.CodeUnits as String
-import Data.String.Yarn (lines, unlines)
-import Data.Traversable (class Traversable, sequence, traverse, sequenceDefault, traverse_)
-import Data.TraversableWithIndex (class TraversableWithIndex, traverseWithIndex, traverseWithIndexDefault)
+import Data.String.Yarn (lines)
+import Data.Traversable (class Traversable, sequence, sequenceDefault, traverse)
+import Data.TraversableWithIndex (class TraversableWithIndex, traverseWithIndexDefault)
 
 newtype Array2d a = Array2d { numCols :: Int, rows :: (Array (Array a)) }
 

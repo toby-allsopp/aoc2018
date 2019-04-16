@@ -45,7 +45,7 @@ labelTo to distance adjacents labels from = do
     upperBoundM <- index2d from labels # fromJust # STRef.read
     debug ("labelTo " <> show to <> " " <> show distance <> " " <> show from <> " " <> show upperBoundM) $ \_ ->
     case upperBoundM of
-        Just upperBound | upperBound.distance < (distance + manhattanDistance to from)-> pure []
+        Just upperBound | upperBound.distance < distance -> pure []
         _ -> do
             label <- index2d to labels # fromJust # STRef.read
             changed <- traverse (\pos -> updateLabel to (distance + 1) labels pos <#> if _ then Just pos else Nothing) adjacents

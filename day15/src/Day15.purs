@@ -18,6 +18,7 @@ import Parser as P
 import Partial.Unsafe (unsafePartial)
 import Position (Position(..), makePosition, manhattanDistance)
 import ShortestPaths as SP
+import Debug (debug)
 
 readingOrder :: Position -> Position -> Ordering
 readingOrder (Position p1) (Position p2) = [p1.y, p1.x] `compare` [p2.y, p2.x]
@@ -184,6 +185,7 @@ openAdjacentPositions map units =
 
 shortestPathsTo :: Map -> Units -> Position -> Position -> Maybe SP.Label
 shortestPathsTo map units from to =
+    debug ("shortestPathsTo " <> show from <> " " <> show to) $ \_ ->
     SP.shortestPathsTo (array2dCols map) (array2dRows map)
         (openAdjacentPositions map units >>> Array.sortBy (comparing (manhattanDistance to)))
         from to
@@ -212,6 +214,7 @@ sequenceSnd (Tuple x my) = my >>= \y -> pure (Tuple x y)
 
 move :: Map -> UnitState -> Units -> Maybe UnitState
 move map unit units =
+    debug ("move " <> show unit) $ \_ ->
     let targets = targetsOfUnit units unit in
     if Array.null targets then
         Nothing
@@ -234,6 +237,7 @@ compareHitPointsThenReadingOrder = chainCompare (compare `on` unitHitPoints) (re
 
 attack :: Map -> UnitState -> Units -> Units
 attack map unit units =
+    debug ("attack " <> show unit) $ \_ ->
     let targets = adjacentTargets map unit units in
     let weakest = minimumBy compareHitPointsThenReadingOrder targets in
     let damagedUnit = damageUnitBy (unitAttackPower unit) <$> weakest in
@@ -247,6 +251,7 @@ attack map unit units =
 
 turn :: Map -> UnitState -> Units -> Either Units Units
 turn map unit units =
+    debug ("turn " <> show unit) $ \_ ->
     case unitAt (unitPosition unit) units of
         Nothing -> Right units
         Just currentUnit ->
@@ -266,7 +271,7 @@ rounds n map units = rounds (n - 1) map =<< (round map units)
 battle :: Map -> Units -> { rounds :: Int, units :: Units }
 battle map = go 0
     where
-    go n units = case round map units of
+    go n units = debug ("Round " <> show n) $ \_ -> case round map units of
         Right newUnits -> go (n + 1) newUnits
         Left newUnits -> { rounds: n, units: newUnits }
 

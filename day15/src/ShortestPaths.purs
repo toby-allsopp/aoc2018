@@ -3,6 +3,7 @@ module ShortestPaths where
 import Prelude
 
 import Array2d
+import Debug (debug)
 import Position
 
 import Control.Monad.Rec.Class (Step(..), tailRecM)
@@ -42,6 +43,7 @@ updateLabel to distance labels pos = do
 labelTo :: forall h. Partial => Position -> Int -> Array Position -> Labels h -> Position -> ST h (Array Position)
 labelTo to distance adjacents labels from = do
     upperBoundM <- index2d from labels # fromJust # STRef.read
+    debug ("labelTo " <> show to <> " " <> show distance <> " " <> show from <> " " <> show upperBoundM) $ \_ ->
     case upperBoundM of
         Just upperBound | upperBound.distance < distance -> pure []
         _ -> do
@@ -59,11 +61,12 @@ wibble adj labels from to = do
 type Todo r = STArray r Position
 
 wobble :: forall r. Partial => (Position -> Array Position) -> Labels r -> Todo r -> Position -> ST r Unit
-wobble adj labels todo from = tailRecM go unit
+wobble adj labels todo from = debug ("wobble " <> show from) $ \_ -> tailRecM go unit
     where
     go :: Unit -> ST r (Step Unit Unit)
     go _ = do
         first <- STArray.peek 0 todo
+        debug ("wobble " <> show first) $ \_ ->
         case first of
             Nothing -> pure $ Done unit
             Just to -> do

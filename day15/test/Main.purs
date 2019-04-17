@@ -69,7 +69,7 @@ main = runTest do
                                               [p 3 0, p 2 0, p 1 0, p 1 1]
                                              ]}) $
       SP.shortestPathsFrom (p 3 0) sps
-    Assert.equal (Just (p 1 0)) $ nextStep <<< _.paths =<< SP.shortestPathsFrom (p 3 0) sps
+    Assert.equal (Just (p 1 0)) $ nextStep $ SP.followNextsUntilDistance 1 sps (p 3 0)
   test "move" do
     let { map, units } = m """#######
 #E..G.#

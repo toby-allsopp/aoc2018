@@ -14,7 +14,7 @@ import Control.Monad.ST.Ref as STRef
 import Data.Array as Array
 import Data.Array.ST (STArray)
 import Data.Array.ST as STArray
-import Data.Foldable (elem)
+import Data.Foldable (elem, foldl)
 import Data.HashSet as HashSet
 import Data.HashSet (HashSet)
 import Data.Maybe (Maybe(..), fromJust, fromMaybe)
@@ -57,7 +57,7 @@ wibble adj labels from = do
 type Todo r = STArray r Position
 
 wobble :: forall r. Partial => (Position -> Array Position) -> Labels r -> Todo r -> ST r Unit
-wobble adj labels todo = debug ("wobble") $ \_ -> tailRecM go unit
+wobble adj labels todo = tailRecM go unit
     where
     go :: Unit -> ST r (Step Unit Unit)
     go _ = do
@@ -98,6 +98,24 @@ followPaths sps = followPaths' []
             if HashSet.size label.next == 0 then [[p]] else
                 let paths = followPaths' (Array.snoc seen p) =<< HashSet.toArray label.next in
                 Array.cons p <$> paths
+
+labelToNextLabels :: Array2d (Maybe Label) -> Label -> Array Label
+labelToNextLabels sps { next } = Array.catMaybes $ join <$> flip index2d sps <$> HashSet.toArray next
+
+followNextsUntilDistance :: Int -> Array2d (Maybe Label) -> Position -> Array Position
+followNextsUntilDistance d sps from =
+    case index2d from sps of
+        Nothing -> []
+        Just Nothing -> []
+        Just (Just label) -> go [from] label.distance
+    where
+    go froms distance =
+        debug ("followNextsUntilDistance " <> show d <> " " <> show distance <> " " <> show froms) $ \_ ->
+        if distance <= d then froms
+        else
+            let labels = Array.catMaybes $ join <$> flip index2d sps <$> froms in
+            let (nextPositions :: Array Position) = HashSet.toArray $ HashSet.fromFoldable $ join $ HashSet.toArray <$> _.next <$> labels in
+            go nextPositions (distance - 1)
 
 type Path = { distance :: Int, paths :: Array (Array Position) }
 

@@ -205,8 +205,8 @@ labelShortestPathsTo map units to =
 nextSteps :: Array (Array Position) -> Array Position
 nextSteps = Array.mapMaybe (\path -> path !! (Array.length path - 2))
 
-nextStep :: Array (Array Position) -> Maybe Position
-nextStep = nextSteps >>> minimumBy readingOrder
+nextStep :: Array Position -> Maybe Position
+nextStep = minimumBy readingOrder
 
 spPathFrom :: SP.Path -> Maybe Position
 spPathFrom = _.paths >>> Array.head >=> Array.head
@@ -217,15 +217,18 @@ chainCompare cmp1 cmp2 x y =
         EQ -> cmp2 x y
         o -> o
 
-compareDistanceThenReadingOrder :: SP.Path -> SP.Path -> Ordering
+compareDistanceThenReadingOrder :: Tuple Position SP.Label -> Tuple Position SP.Label -> Ordering
 compareDistanceThenReadingOrder =
-    chainCompare (compare `on` _.distance) (\x y -> fromMaybe EQ $ (lift2 readingOrder `on` spPathFrom) x y)
+    chainCompare (compare `on` (snd >>> _.distance)) (readingOrder `on` fst)
 
 updateUnitInUnits :: UnitState -> UnitState -> Units -> Units
 updateUnitInUnits oldUnit newUnit (Units units) =
     case Array.findIndex (\u -> unitPosition u == unitPosition oldUnit) units of
         Nothing -> Units units
         Just index -> Units $ fromMaybe units $ Array.sortBy (readingOrder `on` unitPosition) <$> Array.updateAt index newUnit units
+
+sequenceSnd :: forall m a b. Monad m => Tuple a (m b) -> m (Tuple a b)
+sequenceSnd (Tuple x my) = my >>= \y -> pure (Tuple x y)
 
 move :: Map -> UnitState -> Units -> Maybe UnitState
 move map unit units =
@@ -236,8 +239,9 @@ move map unit units =
         Nothing
     else
         let inRange = inRangeOfTarget unit map units targets in
-        let pathsToNearestInRange = minimumBy compareDistanceThenReadingOrder $ Array.catMaybes $ (flip SP.shortestPathsFrom sps <$> inRange) in
-        let movedUnit = pathsToNearestInRange <#> _.paths >>= nextStep <#> updateUnitPosition unit # fromMaybe unit in
+        let (positionsAndLabelsInRange :: Array (Tuple Position SP.Label)) = Array.mapMaybe sequenceSnd $ Array.zip inRange (join <$> flip index2d sps <$> inRange) in
+        let (nearestInRange :: Maybe Position) = fst <$> minimumBy compareDistanceThenReadingOrder positionsAndLabelsInRange in
+        let movedUnit = nearestInRange <#> SP.followNextsUntilDistance 1 sps >>= nextStep <#> updateUnitPosition unit # fromMaybe unit in
         Just movedUnit
 
 adjacentTargets :: Map -> UnitState -> Units -> Array UnitState

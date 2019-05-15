@@ -14,6 +14,7 @@ import Data.Array ((!!))
 import Data.Foldable (class Foldable, foldMap, foldl, foldr, maximum, minimumBy, sum)
 import Data.FoldableWithIndex (class FoldableWithIndex, foldlWithIndex, foldrWithIndex, foldMapWithIndex)
 import Data.FunctorWithIndex (class FunctorWithIndex, mapWithIndex)
+import Data.Int (rem, quot)
 import Data.Maybe (Maybe(..), fromJust, fromMaybe)
 import Data.String (joinWith)
 import Data.String.CodeUnits as String
@@ -21,12 +22,19 @@ import Data.String.Yarn (lines, unlines)
 import Data.Traversable (class Traversable, sequence, traverse, sequenceDefault, traverse_)
 import Data.TraversableWithIndex (class TraversableWithIndex, traverseWithIndex, traverseWithIndexDefault)
 
-newtype Array2d a = Array2d { numCols :: Int, rows :: (Array (Array a)) }
+newtype Array2d a = Array2d { numCols :: Int, elements :: Array a }
+
+array2dToRows :: forall a. Array2d a -> Array (Array a)
+array2dToRows (Array2d a) = go a.numCols a.elements []
+    where
+    go :: Int -> Array a -> Array (Array a) -> Array (Array a)
+    go n [] rows = rows
+    go n xs rows = go n (Array.drop n xs) (Array.snoc rows (Array.take n xs))
 
 derive instance eqArray2d :: Eq a => Eq (Array2d a)
 
 instance showArray2d :: Show a => Show (Array2d a) where
-    show a2d@(Array2d a) = "[" <> joinWith ",\n " (showRow <$> a.rows) <> "]"
+    show a2d@(Array2d a) = "[" <> joinWith ",\n " (showRow <$> array2dToRows a2d) <> "]"
         where
         maxWidth :: Int
         maxWidth = fromMaybe 0 $ maximum $ (String.length <<< show) <$> a2d
@@ -38,24 +46,34 @@ instance showArray2d :: Show a => Show (Array2d a) where
         padTo w s = s <> String.fromCharArray (Array.replicate (w - String.length s) ' ')
 
 instance functorArray2d :: Functor Array2d where
-    map f (Array2d a) = Array2d (a { rows = map (map f) a.rows })
+    map f (Array2d a) = Array2d (a { elements = map f a.elements })
 
 instance foldableArray2d :: Foldable Array2d where
-    foldl f init (Array2d a) = foldl (foldl f) init a.rows
-    foldr f init (Array2d a) = foldr (flip (foldr f)) init a.rows
-    foldMap f (Array2d a) = foldMap (foldMap f) a.rows
+    foldl f init (Array2d a) = foldl f init a.elements
+    foldr f init (Array2d a) = foldr f init a.elements
+    foldMap f (Array2d a) = foldMap f a.elements
 
 instance traversableArray2d :: Traversable Array2d where
-    traverse f (Array2d a) = Array2d <$> a { rows = _ } <$> sequence (traverse f <$> a.rows)
+    traverse f (Array2d a) = Array2d <$> a { elements = _ } <$> traverse f a.elements
     sequence = sequenceDefault
 
-instance functorWithIndexArray2 :: FunctorWithIndex Position Array2d where
-    mapWithIndex f (Array2d a) = Array2d (a { rows = mapWithIndex (\y -> mapWithIndex (\x -> f (makePosition x y))) a.rows })
+indexToPosition :: Int -> Int -> Position
+indexToPosition numCols i = makePosition (i `rem` numCols) (i `quot` numCols)
+
+positionToIndex :: Int -> Position -> Int
+positionToIndex numCols p =
+    case positionX p of
+        x | x < 0 -> -1
+        x | x >= numCols -> -2
+        x -> x + (positionY p) * numCols
+
+instance functorWithIndexArray2d :: FunctorWithIndex Position Array2d where
+    mapWithIndex f (Array2d a) = Array2d (a { elements = mapWithIndex (\i -> f (indexToPosition a.numCols i)) a.elements })
 
 instance foldableWithIndexArray2d :: FoldableWithIndex Position Array2d where
-    foldlWithIndex f init (Array2d a) = foldlWithIndex (\y -> foldlWithIndex (\x -> f (makePosition x y))) init a.rows
-    foldrWithIndex f init (Array2d a) = foldrWithIndex (\y row result -> foldrWithIndex (\x -> f (makePosition x y)) result row) init a.rows
-    foldMapWithIndex f (Array2d a) = foldMapWithIndex (\y -> foldMapWithIndex (\x -> f (makePosition x y))) a.rows
+    foldlWithIndex f init (Array2d a) = foldlWithIndex (\i -> f (indexToPosition a.numCols i)) init a.elements
+    foldrWithIndex f init (Array2d a) = foldrWithIndex (\i -> f (indexToPosition a.numCols i)) init a.elements
+    foldMapWithIndex f (Array2d a) = foldMapWithIndex (\i -> f (indexToPosition a.numCols i)) a.elements
 
 instance traversableWithIndexArray2d :: TraversableWithIndex Position Array2d where
     traverseWithIndex = traverseWithIndexDefault
@@ -64,8 +82,8 @@ rowsToArray2d :: forall m a. MonadThrow String m => Array (Array a) -> m (Array2
 rowsToArray2d rows =
     let rowLengths = rows <#> Array.length # Array.nub in
     case rowLengths of
-        [] -> pure $ Array2d { numCols: 0, rows }
-        [numCols] -> pure $ Array2d { numCols, rows }
+        [] -> pure $ Array2d { numCols: 0, elements: join rows }
+        [numCols] -> pure $ Array2d { numCols, elements: join rows }
         _ -> throwError $ "uneven row lengths: " <> show rowLengths
 
 parseArray2d :: forall m. MonadThrow String m => String -> m (Array2d Char)
@@ -77,21 +95,21 @@ array2dCols :: forall a. Array2d a -> Int
 array2dCols (Array2d { numCols }) = numCols
 
 array2dRows :: forall a. Array2d a -> Int
-array2dRows (Array2d { rows }) = Array.length rows
+array2dRows (Array2d a) = Array.length a.elements `div` a.numCols
 
 index2d :: forall a. Position -> Array2d a -> Maybe a
-index2d p (Array2d { rows }) = rows !! (positionY p) >>= (_ !! positionX p)
+index2d p (Array2d a) = a.elements !! (positionToIndex a.numCols p)
 
 unsafeIndex2d :: forall a. Partial => Position -> Array2d a -> a
-unsafeIndex2d p (Array2d { rows }) = flip Array.unsafeIndex (positionX p) $ flip Array.unsafeIndex (positionY p) rows
+unsafeIndex2d p (Array2d a) = flip Array.unsafeIndex (positionToIndex a.numCols p) a.elements
 
 newArray2dST :: forall h a. Int -> Int -> a -> ST h (Array2d (STRef h a))
 newArray2dST numCols numRows x = do
-    rows <- sequence $ Array.replicate numRows $ sequence $ Array.replicate numCols (STRef.new x)
-    pure $ Array2d { numCols, rows }
+    elements <- sequence $ Array.replicate (numCols * numRows) (STRef.new x)
+    pure $ Array2d { numCols, elements }
 
 freezeArray2d :: forall h a. Array2d (STRef h a) -> ST h (Array2d a)
-freezeArray2d (Array2d { numCols, rows }) = do
-    frozenRows <- traverse (traverse STRef.read) rows
-    pure $ Array2d { numCols, rows: frozenRows }
+freezeArray2d (Array2d { numCols, elements }) = do
+    frozenElements <- traverse STRef.read elements
+    pure $ Array2d { numCols, elements: frozenElements }
 

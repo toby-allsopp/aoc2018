@@ -15,7 +15,8 @@
     "purescript-strings": "^4.0.1",
     "purescript-longs": "^0.1.1",
     "long": "^4.0.0",
-    "purescript-memoize": "^5.0.0"
+    "purescript-memoize": "^5.0.0",
+    "purescript-clock": "^2.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^4.0.0",

@@ -3,8 +3,9 @@ module Main where
 import Prelude
 
 import Day15 as Day15
+import Profile as Profile
 import Effect (Effect)
-import Effect.Console (log)
+import Effect.Console (log, logShow)
 import Data.Either (Either(..))
 import Data.Foldable (foldMap)
 
@@ -44,6 +45,8 @@ input = """################################
 
 main :: Effect Unit
 main = do
-  case Day15.parseMap input of
-    Right { map, units } -> log $ show $ Day15.outcome $ Day15.battle map units
+  i <- pure input
+  case Day15.parseMap i of
+    Right { map, units } -> logShow $ Day15.outcome $ Day15.battle map units
     Left msg -> log msg
+  logShow =<< Profile.summary

@@ -1,8 +1,8 @@
 module Day15 where
 
 import Array2d
-import Control.Monad.Writer.Trans
 import Position
+import Profile
 import Prelude
 
 import Control.Alt (class Alt, (<|>))
@@ -13,6 +13,7 @@ import Control.Monad.ST (ST)
 import Control.Monad.ST as ST
 import Control.Monad.ST.Ref (STRef)
 import Control.Monad.ST.Ref as STRef
+import Control.Monad.Writer.Trans
 import Data.Array (foldMap, foldl, foldr, (!!))
 import Data.Array as Array
 import Data.Array.ST (STArray)
@@ -21,6 +22,9 @@ import Data.Either (Either(..))
 import Data.Foldable (class Foldable, foldM, maximum, minimumBy, sum)
 import Data.Function (on)
 import Data.Function.Memoize (class Tabulate, tabulate, memoize)
+import Data.FunctorWithIndex (class FunctorWithIndex, mapWithIndex)
+import Data.HashMap (HashMap)
+import Data.HashMap as HashMap
 import Data.Maybe (Maybe(..), fromJust, fromMaybe)
 import Data.String (joinWith)
 import Data.String.CodeUnits (toCharArray)
@@ -50,6 +54,8 @@ leftStep :: Position
 leftStep = makePosition (-1) 0
 
 data Square = Wall | Open
+
+derive instance eqSquare :: Eq Square
 
 instance showSquare :: Show Square where
     show Wall = "#"
@@ -84,12 +90,15 @@ parseSquareOrUnit p c = lift (parseSquare c) <|> do
 
 type Map = Array2d Square
 
+unitsFromArray :: Array UnitState -> Units
+unitsFromArray = Units <<< HashMap.fromArrayBy unitPosition identity
+
 parseMap :: forall m. MonadThrow String m => Alt m => String -> m { map :: Map, units :: Units }
 parseMap s = runWriterT (traverseWithIndex parseSquareOrUnit =<< (lift $ parseArray2d s))
-    <#> \(Tuple map units) -> { map, units: Units units }
+    <#> \(Tuple map units) -> { map, units: unitsFromArray units }
 
 squareAt :: Position -> Map -> Maybe Square
-squareAt = index2d
+squareAt p map = index2d p map
 
 data UnitType = Goblin | Elf
 
@@ -135,7 +144,7 @@ isDead (UnitState u) = u.hitPoints <= 0
 isEnemy :: UnitState -> UnitState -> Boolean
 isEnemy (UnitState u1) (UnitState u2) = u1.unitType /= u2.unitType
 
-newtype Units = Units (Array UnitState)
+newtype Units = Units (HashMap Position UnitState)
 
 derive instance eqUnits :: Eq Units
 
@@ -143,73 +152,79 @@ instance showUnits :: Show Units where
     show (Units units) = show units
 
 unitsToArray :: Units -> Array UnitState
-unitsToArray (Units units) = units
+unitsToArray (Units units) = HashMap.values units # Array.sortBy (readingOrder `on` unitPosition)
 
 foldrUnits :: forall b. (UnitState -> b -> b) -> b -> Units -> b
-foldrUnits f i (Units u) = foldr f i u
+foldrUnits f i u = foldr f i (unitsToArray u)
 
 foldlUnits :: forall b. (b -> UnitState -> b) -> b -> Units -> b
-foldlUnits f i (Units u) = foldl f i u
+foldlUnits f i u = foldl f i (unitsToArray u)
 
 foldMUnits :: forall m b. Monad m => (b -> UnitState -> m b) -> b -> Units -> m b
-foldMUnits f i (Units u) = foldM f i u
+foldMUnits f i u = foldM f i (unitsToArray u)
 
 unitAt :: Position -> Units -> Maybe UnitState
-unitAt p (Units units) = Array.filter (unitPosition >>> eq p) units # Array.head
+unitAt p (Units units) = HashMap.lookup p units --unsafePartial $ Array.findIndex (unitPosition >>> eq p) units <#> (Array.unsafeIndex units)
 
 removeUnitAt :: Position -> Units -> Units
-removeUnitAt p (Units units) = Units $ Array.filter (unitPosition >>> not eq p) units
+removeUnitAt p (Units units) = Units $ HashMap.delete p units
 
 updateUnitAt :: Position -> UnitState -> Units -> Units
 updateUnitAt p u (Units units) =
-    case Array.findIndex (unitPosition >>> eq p) units of
-        Just i -> Units $ unsafePartial $ fromJust $ Array.updateAt i u units
-        Nothing -> Units units
+    Units $ HashMap.update (Just <<< const u) p units
 
 targetsOfUnit :: Units -> UnitState -> Array UnitState
-targetsOfUnit (Units units) unit = Array.filter (isEnemy unit) units
+targetsOfUnit units unit = Array.filter (isEnemy unit) (unitsToArray units)
 
 adjacentPositions :: Position -> Array Position
-adjacentPositions p = (p + _) <$> [upStep, rightStep, downStep, leftStep]
+-- adjacentPositions p = (p + _) <$> [upStep, rightStep, downStep, leftStep]
+adjacentPositions p = [p + upStep, p + rightStep, p + downStep, p + leftStep]
 
-type UnitOrSquare = Either Square UnitState
+data UnitOrSquareOrNeither = JustSquare Square | JustUnit UnitState | Neither
 
-unitOrSquareAt :: Map -> Units -> Position -> Maybe UnitOrSquare
-unitOrSquareAt map units p = (Right <$> unitAt p units) <|> (Left <$> squareAt p map)
+unitOrSquareAt :: Map -> Units -> Position -> UnitOrSquareOrNeither
+--unitOrSquareAt map units p = profile "unitOrSquareAt" \_ -> (Right <$> unitAt p units) <|> (Left <$> squareAt p map)
+unitOrSquareAt map units p = -- profile "unitOrSquareAt" \_ ->
+    case squareAt p map of
+        Just s ->
+            case unitAt p units of
+                Just u -> JustUnit u
+                Nothing -> JustSquare s
+        Nothing -> Neither
 
-isOpenOrPosition :: Position -> UnitOrSquare -> Boolean
-isOpenOrPosition p (Right u) | unitPosition u == p = true
-isOpenOrPosition _ (Left Open)                     = true
+isOpenOrPosition :: Position -> UnitOrSquareOrNeither -> Boolean
+isOpenOrPosition p (JustUnit u) | unitPosition u == p = true
+isOpenOrPosition _ (JustSquare Open)                     = true
 isOpenOrPosition _ _                               = false
 
 inRangeOfTarget :: UnitState -> Map -> Units -> Array UnitState -> Array Position
 inRangeOfTarget unit map units targets =
     targets
     >>= unitPosition >>> adjacentPositions
-    # Array.filter (\p -> unitOrSquareAt map units p <#> isOpenOrPosition (unitPosition unit) # fromMaybe false)
+    # Array.filter (\p -> unitOrSquareAt map units p # isOpenOrPosition (unitPosition unit))
 
-isOpen :: UnitOrSquare -> Boolean
-isOpen (Left Open) = true
+isOpen :: UnitOrSquareOrNeither -> Boolean
+isOpen (JustSquare Open) = true
 isOpen _           = false
 
 openAdjacentPositions :: Map -> Units -> Position -> Array Position
-openAdjacentPositions map units =
-    adjacentPositions
-    >>> Array.filter (\p -> unitOrSquareAt map units p <#> isOpen # fromMaybe false)
+openAdjacentPositions map = -- profile "openAdjacentPostions_map" \_ ->
+    let a = mapWithIndex oaps map in
+    \units pos -> -- profile "openAdjacentPositions_units_pos" \_ ->
+        index2d pos a # fromMaybe []
+            # Array.filter (\p -> unitAt p units == Nothing)
+    where
+        oaps pos _ =
+            adjacentPositions pos
+            # Array.filter (\p -> squareAt p map == Just Open)
 
-labelShortestPathsTo :: Map -> Units -> Position -> Array2d (Maybe SP.Label)
-labelShortestPathsTo map units to =
-    debug ("labelShortestPathsTo " <> show to) $ \_ ->
-    SP.labelShortestPathsTo (array2dCols map) (array2dRows map) (openAdjacentPositions map units) to
-
-nextSteps :: Array (Array Position) -> Array Position
-nextSteps = Array.mapMaybe (\path -> path !! (Array.length path - 2))
+labelShortestPathsTo :: Map -> Units -> Position -> Array Position -> Array2d (Maybe SP.Label)
+labelShortestPathsTo map = let adj = openAdjacentPositions map in \units to froms ->
+    -- debug ("labelShortestPathsTo " <> show to) $ \_ ->
+    SP.labelShortestPathsTo (array2dCols map) (array2dRows map) (adj units) to froms
 
 nextStep :: Array Position -> Maybe Position
 nextStep = minimumBy readingOrder
-
-spPathFrom :: SP.Path -> Maybe Position
-spPathFrom = _.paths >>> Array.head >=> Array.head
 
 chainCompare :: forall a. (a -> a -> Ordering) -> (a -> a -> Ordering) -> a -> a -> Ordering
 chainCompare cmp1 cmp2 x y =
@@ -223,22 +238,23 @@ compareDistanceThenReadingOrder =
 
 updateUnitInUnits :: UnitState -> UnitState -> Units -> Units
 updateUnitInUnits oldUnit newUnit (Units units) =
-    case Array.findIndex (\u -> unitPosition u == unitPosition oldUnit) units of
-        Nothing -> Units units
-        Just index -> Units $ fromMaybe units $ Array.sortBy (readingOrder `on` unitPosition) <$> Array.updateAt index newUnit units
+    Units $ HashMap.delete (unitPosition oldUnit) units # HashMap.insert (unitPosition newUnit) newUnit
+    -- case Array.findIndex (\u -> unitPosition u == unitPosition oldUnit) units of
+    --     Nothing -> Units units
+    --     Just index -> Units $ fromMaybe units $ Array.sortBy (readingOrder `on` unitPosition) <$> Array.updateAt index newUnit units
 
 sequenceSnd :: forall m a b. Monad m => Tuple a (m b) -> m (Tuple a b)
 sequenceSnd (Tuple x my) = my >>= \y -> pure (Tuple x y)
 
 move :: Map -> UnitState -> Units -> Maybe UnitState
-move map unit units =
-    debug ("move " <> show unit) $ \_ ->
-    let sps = labelShortestPathsTo map units (unitPosition unit) in
+move map = let lspt = labelShortestPathsTo map in \unit units ->
+    -- debug ("move " <> show unit) $ \_ ->
     let targets = targetsOfUnit units unit in
     if Array.null targets then
         Nothing
     else
         let inRange = inRangeOfTarget unit map units targets in
+        let sps = lspt units (unitPosition unit) inRange in
         let (positionsAndLabelsInRange :: Array (Tuple Position SP.Label)) = Array.mapMaybe sequenceSnd $ Array.zip inRange (join <$> flip index2d sps <$> inRange) in
         let (nearestInRange :: Maybe Position) = fst <$> minimumBy compareDistanceThenReadingOrder positionsAndLabelsInRange in
         let movedUnit = nearestInRange <#> SP.followNextsUntilDistance 1 sps >>= nextStep <#> updateUnitPosition unit # fromMaybe unit in
@@ -256,7 +272,7 @@ compareHitPointsThenReadingOrder = chainCompare (compare `on` unitHitPoints) (re
 
 attack :: Map -> UnitState -> Units -> Units
 attack map unit units =
-    debug ("attack " <> show unit) $ \_ ->
+    -- debug ("attack " <> show unit) $ \_ ->
     let targets = adjacentTargets map unit units in
     let weakest = minimumBy compareHitPointsThenReadingOrder targets in
     let damagedUnit = damageUnitBy (unitAttackPower unit) <$> weakest in
@@ -269,12 +285,13 @@ attack map unit units =
                 updateUnitAt (unitPosition du) du units
 
 turn :: Map -> UnitState -> Units -> Either Units Units
-turn map unit units =
-    debug ("turn " <> show unit) $ \_ ->
+turn map = let movemap = move map in \unit units ->
+    -- debug ("turn " <> show unit) $ \_ ->
+    -- profile "turn" \_ ->
     case unitAt (unitPosition unit) units of
         Nothing -> Right units
         Just currentUnit ->
-            case move map currentUnit units of
+            case movemap currentUnit units of
                 Nothing -> Left units
                 Just movedUnit ->
                     let movedUnits = updateUnitInUnits currentUnit movedUnit units in

@@ -43,13 +43,16 @@ unitsToPositions units = unitsToArray units <#> unitPosition
 main :: Effect Unit
 main = runTest do
   test "path" do
-    Assert.equal (a2 []) $ labelShortestPathsTo (a2 []) (Units []) (p 0 0)
+    Assert.equal (a2 []) $ labelShortestPathsTo (a2 []) (unitsFromArray []) (p 0 0) []
     Assert.equal (a2 [[l 0 [],      l 1 [p 0 0]],
                       [l 1 [p 0 0], l 2 [p 1 0, p 0 1]]]) $
-      labelShortestPathsTo (m "..\n..").map (Units []) (p 0 0)
+      labelShortestPathsTo (m "..\n..").map (unitsFromArray []) (p 0 0) []
+    Assert.equal (a2 [[l 0 [],      l 1 [p 0 0]],
+                      [l 1 [p 0 0], Nothing]]) $
+      labelShortestPathsTo (m "..\n..").map (unitsFromArray []) (p 0 0) [p 1 0]
     Assert.equal (a2 [[l 0 [],      Nothing],
                       [l 1 [p 0 0], l 2 [p 0 1]]]) $
-      labelShortestPathsTo (m ".#\n..").map (Units []) (p 0 0)
+      labelShortestPathsTo (m ".#\n..").map (unitsFromArray []) (p 0 0) []
     Assert.equal [[p 0 0]] $
       unsafePartial $ SP.followPaths (a2 [[l 0 [], Nothing],[Nothing, Nothing]]) (p 0 0)
     Assert.equal [[p 1 0, p 0 0]] $
@@ -57,7 +60,7 @@ main = runTest do
     let sps = labelShortestPathsTo (m """....
                                          #...
                                          ###.
-                                         ....""").map (Units []) (p 1 1)
+                                         ....""").map (unitsFromArray []) (p 1 1) []
     Assert.equal (a2 [[l 2 [p 1 0], l 1 [p 1 1], l 2 [p 1 0, p 2 1], l 3 [p 2 0, p 3 1]],
                       [Nothing,     l 0 [],      l 1 [p 1 1],        l 2 [p 2 1]],
                       [Nothing,     Nothing,     Nothing,            l 3 [p 3 1]],
@@ -76,7 +79,7 @@ main = runTest do
 #...#.#
 #.G.#G#
 #######"""
-    Assert.equal (Units [makeUnit Elf (p 1 1), makeUnit Goblin (p 4 1), makeUnit Goblin (p 2 3), makeUnit Goblin (p 5 3)]) units
+    Assert.equal (unitsFromArray [makeUnit Elf (p 1 1), makeUnit Goblin (p 4 1), makeUnit Goblin (p 2 3), makeUnit Goblin (p 5 3)]) units
     let u1 = makeUnit Elf (p 1 1)
     Assert.equal (Just (makeUnit Elf (p 2 1))) $ move map u1 units
     Assert.equal
@@ -115,7 +118,7 @@ main = runTest do
         let movedUnit = move map unit units in
         (\u -> updateUnitInUnits unit u units) <$> movedUnit) <#> unitsToPositions)
     Assert.equal
-      (Left (Units [makeUnit Elf (p 0 0)]))
+      (Left (unitsFromArray [makeUnit Elf (p 0 0)]))
       (let { map, units } = m """E""" in round map units)
     Assert.equal
       (pure ((m """#########
@@ -213,14 +216,14 @@ main = runTest do
               u Goblin (p 5 5) 200])
       ((rounds 47 map units) <#> unitsToArray)
     Assert.equal
-      (Left $ Units [u Goblin (p 1 1) 200,
+      (Left $ unitsFromArray [u Goblin (p 1 1) 200,
                      u Goblin (p 2 2) 131,
                      u Goblin (p 5 3) 59,
                      u Goblin (p 5 5) 200])
       (rounds 48 map units)
     Assert.equal
       ({ rounds: 47,
-         units: Units [u Goblin (p 1 1) 200,
+         units: unitsFromArray [u Goblin (p 1 1) 200,
                        u Goblin (p 2 2) 131,
                        u Goblin (p 5 3) 59,
                        u Goblin (p 5 5) 200] })

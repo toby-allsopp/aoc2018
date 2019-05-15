@@ -243,7 +243,9 @@ struct unit {
 
 auto make_unit(unit_type type) -> unit { return unit{type}; }
 
-auto attack_power(unit const& u) -> int { return 3; }
+auto attack_power(unit const& u, int elf_attack_power) -> int {
+  return u.type == unit_type::elf ? elf_attack_power : 3;
+}
 
 using units = matrix<optional<unit>>;
 
@@ -466,20 +468,12 @@ auto follow_nexts_until_distance(LabelContainer const& labels, pos p, int d)
       assert(l);
       assert(l->distance == distance);
       assert(!l->nexts.empty());
-      //copy(l->nexts.begin(),
-      //     l->nexts.end(),
-      //     inserter(next_nexts, next_nexts.end()));
       for (pos n : l->nexts) {
         if (find(next_nexts.begin(), next_nexts.end(), n) == next_nexts.end()) {
           next_nexts.push_back(n);
         }
-	  }
+      }
     }
-    //static size_t max_nexts_size = 0;
-    //if (next_nexts.size() > max_nexts_size) {
-    //  max_nexts_size = next_nexts.size();
-    //  cout << "max next_nexts size now " << max_nexts_size << "\n";
-    //}
     nexts.assign(next_nexts.begin(), next_nexts.end());
     --distance;
   }
@@ -547,7 +541,7 @@ auto adjacent_targets(map const& m, units const& us, pos p) -> vector<pos> {
   return targets;
 }
 
-auto attack(map const& m, units& us, pos p) {
+auto attack(map const& m, units& us, pos p, int elf_attack_power) {
   vector<pos> target_positions = adjacent_targets(m, us, p);
   auto weakest =
       min_element(target_positions.begin(),
@@ -559,12 +553,17 @@ auto attack(map const& m, units& us, pos p) {
                   });
   if (weakest == target_positions.end()) return;
   optional<unit>& weakest_unit = us[*weakest];
-  if ((weakest_unit->hitpoints -= attack_power(*us[p])) <= 0) {
+  if ((weakest_unit->hitpoints -= attack_power(*us[p], elf_attack_power)) <=
+      0) {
     weakest_unit = nullopt;
   }
 }
 
-auto turn(map const& m, adj_matrix_t const& am, units& us, pos p) {
+auto turn(map const& m,
+          adj_matrix_t const& am,
+          units& us,
+          pos p,
+          int elf_attack_power) {
   if (!us[p]) return true;  // the unit might have been killed before its turn
   optional<pos> new_pos = move(m, am, us, p);
   if (!new_pos) return false;
@@ -573,26 +572,29 @@ auto turn(map const& m, adj_matrix_t const& am, units& us, pos p) {
     assert(m[*new_pos] == square::open);
     swap(us[p], us[*new_pos]);
   }
-  attack(m, us, *new_pos);
+  attack(m, us, *new_pos, elf_attack_power);
   return true;
 }
 
-auto round(map const& m, adj_matrix_t const& am, units& us) {
+auto round(map const& m,
+           adj_matrix_t const& am,
+           units& us,
+           int elf_attack_power) {
   auto ps = us.positions_where(&optional<unit>::has_value);
   assert(is_sorted(ps.begin(), ps.end(), compare_reading_order));
   for (pos const& p : ps) {
-    if (!turn(m, am, us, p)) return false;
+    if (!turn(m, am, us, p, elf_attack_power)) return false;
   }
   return true;
 }
 
-auto battle(map const& m, units& us) {
+auto battle(map const& m, units& us, int elf_attack_power) {
   auto am = calc_adj_matrix(m);
   int num_rounds = 0;
   do {
     // cout << "Round " << num_rounds << endl;
     // dump_state(cout, m, us);
-    if (!round(m, am, us)) break;
+    if (!round(m, am, us, elf_attack_power)) break;
     ++num_rounds;
   } while (true);
   return num_rounds;
@@ -605,8 +607,15 @@ auto outcome(int num_rounds, units const& us) {
       std::reduce(us.begin(), us.end(), 0, [](int hp, optional<unit> const& u) {
         return hp + (u ? u->hitpoints : 0);
       });
-  cout << "sum_hp = " << sum_hp << endl;
+  cout << "rounds = " << num_rounds << "\n";
+  cout << "sum_hp = " << sum_hp << "\n";
   return num_rounds * sum_hp;
+}
+
+auto num_elves(units const& us) {
+  return count_if(us.begin(), us.end(), [](optional<unit> const& ou) {
+    return ou && ou->type == unit_type::elf;
+  });
 }
 
 auto test_input = R"(#######
@@ -620,8 +629,18 @@ auto test_input = R"(#######
 auto main() -> int {
   auto map = parse_map(input);
   assert(map);
-  auto& [m, us] = *map;
-  int num_rounds = battle(m, us);
-  // dump_state(cout, m, us);
-  cout << outcome(num_rounds, us) << "\n";
+  auto const& [m, orig_us] = *map;
+  auto start_num_elves = num_elves(orig_us);
+  int elf_attack_power = 3;
+  for (;;) {
+    cout << "Elf attack power: " << elf_attack_power << "\n";
+    auto us = orig_us;
+    int num_rounds = battle(m, us, elf_attack_power);
+    auto end_num_elves = num_elves(us);
+    cout << "Elves " << start_num_elves << " -> " << end_num_elves << "\n";
+    // dump_state(cout, m, us);
+    cout << outcome(num_rounds, us) << "\n";
+    if (end_num_elves == start_num_elves) break;
+    ++elf_attack_power;
+  }
 }

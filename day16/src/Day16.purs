@@ -2,14 +2,20 @@ module Day16 where
 
 import Prelude
 
-import Parser as P
-
 import Control.Alt ((<|>))
+import Data.Array (foldl, foldr)
 import Data.Array as Array
 import Data.Either (Either)
 import Data.Enum as Enum
-import Data.Int.Bits
-import Data.Maybe (Maybe(..), fromJust)
+import Data.Function (on)
+import Data.HashMap (HashMap)
+import Data.HashMap as HashMap
+import Data.Hashable (class Hashable, hash)
+import Data.Int.Bits (and, or)
+import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Newtype (class Newtype, un)
+import Data.Tuple (Tuple(..))
+import Parser as P
 import Partial.Unsafe (unsafeCrashWith)
 
 type Registers = Array Int
@@ -19,10 +25,21 @@ regValue r i = case Array.index r i of
     Just x -> x
     Nothing -> unsafeCrashWith $ "Invalid register number " <> show i
 
-data OpcodeDescription = OpcodeDescription {
+newtype OpcodeDescription = OpcodeDescription {
     name :: String,
     behaviour :: Registers -> { a :: Int, b :: Int } -> Int
 }
+
+derive instance newtypeOpcodeDescription :: Newtype OpcodeDescription _
+
+instance showOpcodeDescription :: Show OpcodeDescription where
+    show = show <<< opcodeDescriptionName
+
+instance eqOpcodeDescription :: Eq OpcodeDescription where
+    eq = eq `on` opcodeDescriptionName
+
+instance hashableOpcodeDescription :: Hashable OpcodeDescription where
+    hash (OpcodeDescription { name }) = hash name
 
 mkOpcodeRR :: String -> (Int -> Int -> Int) -> OpcodeDescription
 mkOpcodeRR name f = OpcodeDescription { name, behaviour: \r {a, b} -> f (r `regValue` a) (r `regValue` b) }
@@ -79,6 +96,59 @@ numberThatBehaveLikeThreeOrMore :: Array Sample -> Int
 numberThatBehaveLikeThreeOrMore =
     Array.filter (opcodesSampleBehavesLike >>> Array.length >>> (_ >= 3))
     >>> Array.length
+
+type OpcodeNumberToPossibleOpcodes = HashMap Int (Array OpcodeDescription)
+
+opcodeDescriptionName :: OpcodeDescription -> String
+opcodeDescriptionName = un OpcodeDescription >>> (_.name)
+
+initialPossibilities :: Array OpcodeDescription
+initialPossibilities = opcodes
+
+evaluateSample :: Sample -> OpcodeNumberToPossibleOpcodes -> OpcodeNumberToPossibleOpcodes
+evaluateSample sample =
+    HashMap.alter
+        (Just <<<
+         Array.intersect (opcodesSampleBehavesLike sample) <<<
+         fromMaybe initialPossibilities)
+        sample.instruction.opcode
+
+evaluateSamples :: Array Sample -> OpcodeNumberToPossibleOpcodes
+evaluateSamples = foldr evaluateSample HashMap.empty
+
+removeUnambiguous :: OpcodeNumberToPossibleOpcodes -> { known :: HashMap OpcodeDescription Int, unknown :: OpcodeNumberToPossibleOpcodes }
+removeUnambiguous possibilities =
+    let justUnambiguous opcodeNumber possibleOpcodes =
+            case possibleOpcodes of
+                [opcode] -> Just opcode
+                _ -> Nothing in
+    let known = HashMap.mapMaybeWithKey justUnambiguous possibilities
+            # HashMap.toArrayBy (flip Tuple) # HashMap.fromArray in
+    let justNonEmpty = case _ of
+            [] -> Nothing
+            a -> Just a in
+    let unknown = HashMap.mapMaybe (justNonEmpty <<< Array.filter (\opcode -> not $ HashMap.member opcode known)) possibilities in
+    { known, unknown }
+
+solveSamples :: Array Sample -> HashMap Int OpcodeDescription
+solveSamples samples = solve' HashMap.empty (evaluateSamples samples)
+    where
+    solve' known unknown =
+        if HashMap.isEmpty unknown then
+            HashMap.fromArray $ HashMap.toArrayBy (flip Tuple) known
+        else
+            let { known: newKnown, unknown } = removeUnambiguous unknown in
+            if HashMap.isEmpty newKnown then unsafeCrashWith "unable to solve" else
+                solve' (HashMap.union known newKnown) unknown
+
+execProgram :: HashMap Int OpcodeDescription -> Array Instruction -> Registers
+execProgram opcodeMapping instructions = foldl go (Array.replicate 4 0) instructions
+    where
+    go :: Registers -> Instruction -> Registers
+    go r i =
+        case HashMap.lookup i.opcode opcodeMapping of
+            Just opcode -> execOpcode opcode r i.args
+            Nothing -> unsafeCrashWith $ "unmapped opcode " <> show i.opcode
 
 type Parser = P.Parser Char
 

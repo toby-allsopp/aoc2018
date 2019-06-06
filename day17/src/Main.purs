@@ -1817,5 +1817,5 @@ main = case Day17.parseScan input of
     let water = Day17.fillWater pscan
     log "calculated"
     -- logShow water
-    -- logShow $ Day17.combineWaterAndScan pscan water
+    logShow $ Day17.combineWaterAndScan pscan water
     logShow $ Day17.numReachable water

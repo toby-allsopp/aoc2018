@@ -4,17 +4,22 @@ import Prelude
 
 import Control.Alt ((<|>))
 import Control.MonadZero (guard)
+import Control.Monad.Rec.Class ( Step(..), class MonadRec, tailRecM)
+import Control.Monad.ST (ST)
+import Control.Monad.ST as ST
 import Data.Array as Array
 import Data.Either (Either)
-import Data.Foldable (all, any, foldr, foldM)
+import Data.Foldable (class Foldable, all, any, foldr, foldM)
 import Data.Maybe (Maybe(..), fromMaybe, fromJust)
 import Data.String.Yarn (lines)
-import Data.Traversable (traverse)
+import Data.Traversable (traverse, traverse_)
 import Matrix (Matrix)
 import Matrix as M
 import Partial.Unsafe (unsafeCrashWith, unsafePartial)
 
 import Parser as P
+import STMatrix as STM
+import STMatrix (STMatrix)
 
 data Ground = Sand | Clay
 
@@ -45,8 +50,8 @@ fromJustOrCrashWith msg =
         Just x -> x
         Nothing -> unsafeCrashWith msg
 
-reach :: Int -> Int -> WaterMap -> WaterMap
-reach x y = M.modify x y markReached >>> (fromJustOrCrashWith $ "out of bounds in reach " <> show x <> ", " <> show y)
+reach :: forall r. Int -> Int -> STMatrix r Water -> ST r Unit
+reach x y w = void $ STM.modify x y markReached w
     where
     markReached None = Reached
     markReached w = w
@@ -56,9 +61,10 @@ data Action
     | Settle { left :: Int, right :: Int }
     | Spread
 
-reachable :: Scan -> Int -> Int -> WaterMap -> Boolean
-reachable scan x y water =
-    case M.get x y scan, M.get x y water of
+reachable :: forall r. Scan -> Int -> Int -> STMatrix r Water -> ST r Boolean
+reachable scan x y water = do
+    w <- STM.get x y water
+    pure case M.get x y scan, w of
         Just Sand, Just None -> true
         Just Sand, Just Reached -> true
         Just Sand, Just Settled -> false
@@ -66,42 +72,80 @@ reachable scan x y water =
         Nothing, _ -> false
         _, Nothing -> false
 
-canMoveDown :: Scan -> WaterMap -> Int -> Int -> Maybe Action
+canMoveDown :: forall r. Scan -> STMatrix r Water -> Int -> Int -> ST r (Maybe Action)
 canMoveDown scan water x y =
-    if reachable scan x (y + 1) water then Just MoveDown else Nothing
+    ifM (reachable scan x (y + 1) water) (pure (Just MoveDown)) (pure Nothing)
 
-settleable :: Scan -> WaterMap -> Int -> Int -> Maybe Action
+findM :: forall m a. MonadRec m => (a -> m Boolean) -> Array a -> m (Maybe a)
+findM f xs = tailRecM go 0
+    where
+    go i = case Array.index xs i of
+        Nothing -> pure (Done Nothing)
+        Just x -> do
+            found <- f x
+            pure if found then (Done (Just x)) else (Loop (i + 1))
+
+allM :: forall f m a. Foldable f => Monad m => (a -> m Boolean) -> f a -> m Boolean
+allM f = foldM (\b x -> f x <#> (&&) b) true
+
+settleable :: forall r. Scan -> STMatrix r Water -> Int -> Int -> ST r (Maybe Action)
 settleable scan water x y = do
-    let unreachableX y' x' = not $ reachable scan x' y' water
-    leftBarrier <- Array.find (unreachableX y) (Array.range (x - 1) (minX scan))
-    rightBarrier <- Array.find (unreachableX y) (Array.range (x + 1) (maxX scan))
-    guard $ all (unreachableX (y + 1)) (Array.range (leftBarrier + 1) (rightBarrier - 1))
-    pure $ Settle { left: leftBarrier + 1, right: rightBarrier - 1 }
+    let unreachableX y' x' = do
+            r <- reachable scan x' y' water
+            pure (not r)
+    mleftBarrier <- findM (unreachableX y) (Array.range (x - 1) (minX scan))
+    case mleftBarrier of
+        Nothing -> pure Nothing
+        Just leftBarrier -> do
+            mrightBarrier <- findM (unreachableX y) (Array.range (x + 1) (maxX scan))
+            case mrightBarrier of
+                Nothing -> pure Nothing
+                Just rightBarrier -> do
+                    sealed <- allM (unreachableX (y + 1)) (Array.range (leftBarrier + 1) (rightBarrier - 1))
+                    if sealed then
+                        pure $ Just $ Settle { left: leftBarrier + 1, right: rightBarrier - 1 }
+                        else
+                            pure Nothing
 
-waterAction :: Scan -> WaterMap -> Int -> Int -> Action
-waterAction scan water x y =
-    canMoveDown scan water x y <|> settleable scan water x y # fromMaybe Spread
+waterAction :: forall r. Scan -> STMatrix r Water -> Int -> Int -> ST r Action
+waterAction scan water x y = do
+    cmd <- canMoveDown scan water x y
+    case cmd of
+        Just a -> pure a
+        Nothing -> do
+            s <- settleable scan water x y
+            case s of
+                Just a -> pure a
+                Nothing -> pure Spread
 
-settle :: Int -> { left :: Int, right :: Int } -> WaterMap -> WaterMap
+settle :: forall r. Int -> { left :: Int, right :: Int } -> STMatrix r Water -> ST r Unit
 settle y { left, right } water =
-    foldM (\w x -> M.set x y Settled w) water (Array.range left right)
-    # (fromJustOrCrashWith $ "out of bounds in settle " <> show y <> " " <> show { left, right })
+    traverse_ (\x -> STM.set x y Settled water) (Array.range left right)
 
 data Dir = Down | Left | Right
 
-waterPath :: Scan -> Int -> Int -> Dir ->  WaterMap -> WaterMap
-waterPath scan x y dir water =
-    reach x y water # case waterAction scan water x y of
-        MoveDown -> (waterPath scan x (y + 1) Down <<< reach x y)
-        Settle lr -> (waterPath scan x (y - 1) Down <<< settle y lr)
-        Spread ->
-            let goLeft = ifM (reachable scan (x - 1) y) (waterPath scan (x - 1) y Left) identity
-                goRight = ifM (reachable scan (x + 1) y) (waterPath scan (x + 1) y Right) identity
-            in
-            case dir of
-                Down -> (goLeft <<< goRight)
-                Left -> goLeft
-                Right -> goRight
+waterPath :: forall r. Scan -> Int -> Int -> Dir ->  STMatrix r Water -> ST r Unit
+waterPath scan x y dir water = tailRecM go {x, y, dir}
+    where
+    go {x, y, dir} = do
+        reach x y water
+        action <- waterAction scan water x y
+        case action of
+            MoveDown -> pure $ Loop {x, y: (y + 1), dir: Down}
+            Settle lr -> do
+                settle y lr water
+                pure $ Loop {x, y: (y - 1), dir: Down}
+            Spread ->
+                let goLeft water = whenM (reachable scan (x - 1) y water) (waterPath scan (x - 1) y Left water)
+                    goRight water = whenM (reachable scan (x + 1) y water) (waterPath scan (x + 1) y Right water)
+                in
+                case dir of
+                    Down -> do
+                        goLeft water
+                        goRight water
+                        pure $ Done unit
+                    Left -> goLeft water *> (pure $ Done unit)
+                    Right -> goRight water *> (pure $ Done unit)
 
 type Parser = P.Parser Char
 
@@ -140,14 +184,16 @@ parseLines = lines >>> traverse (P.runParser lineParser)
 type ParsedScan = { minX :: Int, minY :: Int, scan :: Scan }
 
 linesToScan :: Array Line -> ParsedScan
-linesToScan lines =
-    let emptyScan = M.repeat (maxX - minX + 3) (maxY - minY + 2) Sand in
-    { minX, minY, scan: foldr addLineToScan emptyScan lines }
+linesToScan lines = ST.run do
+    mutableScan <- STM.new (maxX - minX + 1) (maxY - minY + 2) Sand
+    traverse_ (addLineToScan mutableScan) lines
+    scan <- STM.freeze mutableScan
+    pure { minX, minY, scan }
     where
-        { minX, maxX, minY, maxY } = foldr (\l m -> { minX: min l.x1 m.minX, maxX: max l.x2 m.maxX, minY: min l.y1 m.minY, maxY: max l.y1 m.maxY}) { minX: top, maxX: bottom, minY: top, maxY: bottom } lines
+        { minX, maxX, minY, maxY } = foldr (\l m -> { minX: min (l.x1 - 1) m.minX, maxX: max (l.x2 + 1) m.maxX, minY: min l.y1 m.minY, maxY: max l.y1 m.maxY}) { minX: top, maxX: bottom, minY: top, maxY: bottom } lines
 
-        addLineToScan :: Line -> Scan -> Scan
-        addLineToScan l s = foldr setClay s (positionsInLine l)
+        addLineToScan :: forall r. STMatrix r Ground -> Line -> ST r Unit
+        addLineToScan s l = traverse_ (setClay s) (positionsInLine l)
 
         positionsInLine :: Line -> Array { x :: Int, y :: Int }
         positionsInLine l = do
@@ -155,16 +201,18 @@ linesToScan lines =
             y <- Array.range (l.y1 - minY) (l.y2 - minY)
             pure { x, y }
 
-        setClay :: { x :: Int, y :: Int } -> Scan -> Scan
-        setClay {x, y} s = M.set x y Clay s # (fromJustOrCrashWith $ "out of range in setClay " <> show {x,y})
+        setClay :: forall r. STMatrix r Ground -> { x :: Int, y :: Int } -> ST r Unit
+        setClay s {x, y} = void $ STM.set x y Clay s <#> (fromJustOrCrashWith $ "out of range in setClay " <> show {x,y})
 
 parseScan :: String -> Either String ParsedScan
 parseScan s = parseLines s <#> linesToScan
 
 fillWater :: ParsedScan -> WaterMap
-fillWater scan =
-    let emptyWater = M.repeat (M.width scan.scan) (M.height scan.scan) None in
-    waterPath scan.scan (500 - scan.minX) 0 Down emptyWater
+fillWater scan = ST.run do
+    mutableWater <- STM.new (M.width scan.scan) (M.height scan.scan) None
+    waterPath scan.scan (500 - scan.minX) 0 Down mutableWater
+    water <- STM.freeze mutableWater
+    pure water
 
 data GroundOrWater = Ground Ground | Water Water
 
@@ -172,7 +220,7 @@ instance showGroundOrWater :: Show GroundOrWater where
     show (Ground g) = show g
     show (Water w) = show w
 
-combineWaterAndScan :: ParsedScan -> WaterMap -> Matrix GroundOrWater
+combineWaterAndScan :: ParsedScan -> WaterMap-> Matrix GroundOrWater
 combineWaterAndScan scan water =
     M.zipWith f scan.scan water # (fromJustOrCrashWith $ "different dimensions :(")
     where

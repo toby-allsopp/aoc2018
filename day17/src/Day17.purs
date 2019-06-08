@@ -246,3 +246,10 @@ numReachable water =
     where
     f None s = s
     f _ s = s + 1
+
+numSettled :: WaterMap -> Int
+numSettled water =
+    foldr f 0 (dropLastRow water)
+    where
+    f Settled s = s + 1
+    f _ s = s

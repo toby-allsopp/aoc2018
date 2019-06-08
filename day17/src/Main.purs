@@ -1819,3 +1819,4 @@ main = case Day17.parseScan input of
     -- logShow water
     -- logShow $ Day17.combineWaterAndScan pscan water
     logShow $ Day17.numReachable water
+    logShow $ Day17.numSettled water

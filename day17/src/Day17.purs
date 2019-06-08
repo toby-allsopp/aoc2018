@@ -107,29 +107,30 @@ settleable scan water x y = do
                         else
                             pure Nothing
 
-waterAction :: forall r. Scan -> STMatrix r Water -> Int -> Int -> ST r Action
-waterAction scan water x y = do
+data Dir = Down | Left | Right
+
+waterAction :: forall r. Scan -> STMatrix r Water -> Int -> Int -> Dir -> ST r Action
+waterAction scan water x y dir = do
     cmd <- canMoveDown scan water x y
-    case cmd of
-        Just a -> pure a
-        Nothing -> do
+    case cmd, dir of
+        Just a, _ -> pure a
+        Nothing, Down -> do
             s <- settleable scan water x y
             case s of
                 Just a -> pure a
                 Nothing -> pure Spread
+        Nothing, _ -> pure Spread
 
 settle :: forall r. Int -> { left :: Int, right :: Int } -> STMatrix r Water -> ST r Unit
 settle y { left, right } water =
     traverse_ (\x -> STM.set x y Settled water) (Array.range left right)
-
-data Dir = Down | Left | Right
 
 waterPath :: forall r. Scan -> Int -> Int -> Dir ->  STMatrix r Water -> ST r Unit
 waterPath scan x y dir water = tailRecM go {x, y, dir}
     where
     go {x, y, dir} = do
         reach x y water
-        action <- waterAction scan water x y
+        action <- waterAction scan water x y dir
         case action of
             MoveDown -> pure $ Loop {x, y: (y + 1), dir: Down}
             Settle lr -> do
@@ -142,10 +143,17 @@ waterPath scan x y dir water = tailRecM go {x, y, dir}
                 case dir of
                     Down -> do
                         goLeft water
-                        goRight water
-                        pure $ Done unit
-                    Left -> goLeft water *> (pure $ Done unit)
-                    Right -> goRight water *> (pure $ Done unit)
+                        ifM (reachable scan (x + 1) y water)
+                            (pure $ Loop { x: x + 1, y, dir: Right })
+                            (pure $ Done unit)
+                    Left ->
+                        ifM (reachable scan (x - 1) y water)
+                            (pure $ Loop { x: x - 1, y, dir })
+                            (pure $ Done unit)
+                    Right ->
+                        ifM (reachable scan (x + 1) y water)
+                            (pure $ Loop { x: x + 1, y, dir })
+                            (pure $ Done unit)
 
 type Parser = P.Parser Char
 

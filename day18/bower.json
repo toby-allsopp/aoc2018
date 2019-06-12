@@ -1,0 +1,21 @@
+{
+  "name": "day18",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "output"
+  ],
+  "dependencies": {
+    "purescript-prelude": "^4.1.1",
+    "purescript-console": "^4.2.0",
+    "purescript-effect": "^2.0.1",
+    "purescript-matrices": "^4.0.0",
+    "purescript-yarn": "^4.0.0",
+    "purescript-transformers": "^4.2.0",
+    "purescript-unordered-collections": "^1.8.2"
+  },
+  "devDependencies": {
+    "purescript-psci-support": "^4.0.0"
+  }
+}

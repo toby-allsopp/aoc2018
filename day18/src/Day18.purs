@@ -1,7 +1,5 @@
 module Day18 where
 
-import Position (Position, makePosition, positionX, positionY)
-import Prelude (class Eq, class Show, flip, otherwise, pure, show, zero, (#), ($), (&&), (*), (+), (-), (<#>), (<>), (==), (>=), (>=>))
 import Array2d (Array2d, index2d)
 import Array2d as Array2d
 import Control.Monad.Error.Class (class MonadThrow, throwError)
@@ -9,11 +7,19 @@ import Data.Array (catMaybes)
 import Data.Either (Either)
 import Data.Foldable (foldr)
 import Data.FunctorWithIndex (mapWithIndex)
+import Data.Hashable (class Hashable)
 import Data.Traversable (traverse)
+import Position (Position, makePosition, positionX, positionY)
+import Prelude (class Eq, class Show, flip, otherwise, pure, show, zero, (#), ($), (&&), (*), (+), (-), (<#>), (<>), (==), (>=), (>=>))
 
 data AcreContent = Open | Trees | Lumberyard
 
 derive instance eqAcreContent :: Eq AcreContent
+
+instance hashableAcreContent :: Hashable AcreContent where
+    hash Open = 1
+    hash Trees = 2
+    hash Lumberyard = 3
 
 instance showAcreContent :: Show AcreContent where
     show Open = "."

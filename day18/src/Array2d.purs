@@ -1,19 +1,19 @@
 module Array2d where
 
-import Prelude
-
 import Position
+import Prelude
 
 import Control.Monad.Error.Class (class MonadThrow, throwError)
 import Control.Monad.ST (ST)
 import Control.Monad.ST as ST
 import Control.Monad.ST.Ref (STRef)
 import Control.Monad.ST.Ref as STRef
-import Data.Array as Array
 import Data.Array ((!!))
+import Data.Array as Array
 import Data.Foldable (class Foldable, foldMap, foldl, foldr, maximum, minimumBy, sum)
 import Data.FoldableWithIndex (class FoldableWithIndex, foldlWithIndex, foldrWithIndex, foldMapWithIndex)
 import Data.FunctorWithIndex (class FunctorWithIndex, mapWithIndex)
+import Data.Hashable (class Hashable, hash)
 import Data.Int (rem, quot)
 import Data.Maybe (Maybe(..), fromJust, fromMaybe)
 import Data.String (joinWith)
@@ -32,6 +32,9 @@ array2dToRows (Array2d a) = go a.numCols a.elements []
     go n xs rows = go n (Array.drop n xs) (Array.snoc rows (Array.take n xs))
 
 derive instance eqArray2d :: Eq a => Eq (Array2d a)
+
+instance hashableAeeay2d :: Hashable a => Hashable (Array2d a) where
+    hash (Array2d a) = hash a
 
 instance showArray2d :: Show a => Show (Array2d a) where
     show a2d@(Array2d a) = "[" <> joinWith ",\n " (showRow <$> array2dToRows a2d) <> "]"

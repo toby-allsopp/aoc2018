@@ -3,10 +3,12 @@ module Main where
 import Prelude
 
 import Data.Either (Either(..))
+import Data.Traversable (traverse_)
 import Effect (Effect)
 import Effect.Console (log, logShow)
 
 import Day19 as Day19
+import Compiler as Compiler
 
 input :: String
 input = """#ip 3
@@ -53,5 +55,11 @@ main = do
     case Day19.parseInput input of
       Left error -> log error
       Right { ipRegister, program } -> do
-        let registers = Day19.execProgram ipRegister program
-        logShow registers
+        log `traverse_` (Compiler.compile ipRegister program)
+        -- case Day19.assembleProgram program of
+        --   Left error -> log error
+        --   Right exe -> do
+        --     let registers = Day19.execProgram ipRegister exe (Day19.intToRegisterValue <$> [0,0,0,0,0,0])
+        --     logShow registers
+        --     let part2registers = Day19.execProgram ipRegister exe (Day19.intToRegisterValue <$> [1,0,0,0,0,0])
+        --     logShow part2registers

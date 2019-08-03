@@ -13,6 +13,7 @@ You can edit this file as you like.
     , "effect"
     , "psci-support"
     , "strings"
+    , "transformers"
     , "unordered-collections"
     , "unicode"
     ]

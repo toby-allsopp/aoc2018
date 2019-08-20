@@ -1,10 +1,12 @@
 module Day20 where
 
 import Prelude
-import Regex
 
-import Data.Maybe
-import Data.Foldable
+import Data.Foldable (foldl, maximum)
+import Data.Maybe (fromMaybe)
+import Regex (Dir(..), Regex(..))
+
+import Data.Array as Array
 import Data.HashMap (HashMap)
 import Data.HashMap as HashMap
 import Data.Tuple (Tuple(..))
@@ -46,3 +48,7 @@ followRegex = follow { pos: {x:0, y:0}, dist: 0, labels: HashMap.fromArray [Tupl
 
 furthest :: Labels -> Int
 furthest = HashMap.values >>> map _.shortestDistance >>> maximum >>> fromMaybe 0
+
+countShortestPathsSuchThat :: (Int -> Boolean) -> Labels -> Int
+countShortestPathsSuchThat p =
+    HashMap.values >>> Array.filter (_.shortestDistance >>> p) >>> Array.length

@@ -21,3 +21,4 @@ main = do
       let labels = Day20.followRegex regex
       log "followed"
       logShow $ Day20.furthest labels
+      logShow $ Day20.countShortestPathsSuchThat (\d -> d >= 1000) labels

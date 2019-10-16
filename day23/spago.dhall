@@ -6,15 +6,17 @@ You can edit this file as you like.
     "my-project"
 , dependencies =
     [ "arrays"
+    , "console"
+    , "control"
     , "effect"
     , "enums"
     , "generics-rep"
-    , "console"
-    , "control"
     , "memoize"
+    , "psci-support"
+    , "test-unit"
     , "unicode"
     , "unordered-collections"
-    , "psci-support" ]
+    ]
 , packages =
     ./packages.dhall
 , sources =

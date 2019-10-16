@@ -4,7 +4,9 @@ import Prelude
 
 import Data.Array as Array
 import Data.Either (Either(..))
+import Data.Foldable (minimum)
 import Data.Maybe (Maybe(..))
+import Day23 (Pos(..))
 import Day23 as Day23
 import Effect (Effect)
 import Effect.Console (log)
@@ -1023,6 +1025,15 @@ pos=<89744052,-2248647,43960542>, r=82213507
 pos=<62603831,38551284,44250572>, r=89242719
 pos=<-32703529,41373674,38773710>, r=91253877"""
 
+testinput2 :: String
+testinput2 = """pos=<10,12,12>, r=2
+pos=<12,14,12>, r=2
+pos=<16,12,12>, r=4
+pos=<14,14,14>, r=6
+pos=<50,50,50>, r=200
+pos=<10,10,10>, r=5
+"""
+
 main :: Effect Unit
 main = do
   case Day23.parseInput testinput of
@@ -1035,12 +1046,20 @@ main = do
         Just s ->
           log $ show $ Array.length $ Day23.inRange s bots
         Nothing -> log ":("
+  case Day23.parseInput testinput2 of
+    Left err -> log err
+    Right bots -> do
+      log $ show $ Day23.mostCoveredPoints bots
   case Day23.parseInput input of
     Left err -> log err
     Right bots -> do
-      let strongest = Day23.strongest bots
-      log $ show $ strongest
-      case strongest of
-        Just s ->
-          log $ show $ Array.length $ Day23.inRange s bots
-        Nothing -> log ":("
+      let points = Day23.mostCoveredPoints bots
+      -- log $ show $ points
+      -- log $ show $ Day23.distance (Pos 0 0 0) <$> points
+      log $ show $ minimum $ Day23.distance (Pos 0 0 0) <$> points
+  --     let strongest = Day23.strongest bots
+  --     log $ show $ strongest
+  --     case strongest of
+  --       Just s ->
+  --         log $ show $ Array.length $ Day23.inRange s bots
+  --       Nothing -> log ":("
